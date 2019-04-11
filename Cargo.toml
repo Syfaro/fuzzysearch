@@ -1,0 +1,16 @@
+[package]
+name = "fa-watcher"
+version = "0.1.0"
+authors = ["Syfaro <syfaro@huefox.com>"]
+edition = "2018"
+
+[dependencies]
+reqwest = "^0.9"
+postgres = {version = "^0.15", features = ["with-chrono"]}
+r2d2_postgres = "^0.14"
+r2d2 = "^0.8"
+chrono = "^0.4"
+
+[dependencies.furaffinity-rs]
+git = "ssh://git@huefox.com/syfaro/furaffinity-rs.git"
+rev = "96b131136a8859a75573552f34c1a6c763f65df7"
