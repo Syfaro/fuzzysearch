@@ -142,7 +142,13 @@ fn main() {
                         }
                     };
 
-                    let sub = fa.calc_image_hash(sub).expect("unable to hash image");
+                    let sub = match fa.calc_image_hash(sub.clone()) {
+                        Ok(sub) => sub,
+                        Err(e) => {
+                            println!("unable to hash image: {:?}", e);
+                            sub
+                        },
+                    };
 
                     insert_submission(&client, &sub).unwrap();
 
