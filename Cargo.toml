@@ -12,5 +12,5 @@ r2d2 = "^0.8"
 chrono = "^0.4"
 
 [dependencies.furaffinity-rs]
-git = "ssh://git@huefox.com/syfaro/furaffinity-rs.git"
-rev = "0d1deeeb44be8217325de45e5122f13e03c4e7ef"
+git = "https://git.huefox.com/syfaro/furaffinity-rs"
+rev = "eb06986cd29ee8e35af879f5d6cdf184f3177124"
