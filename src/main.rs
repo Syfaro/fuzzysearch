@@ -76,7 +76,7 @@ fn insert_submission(
         furaffinity_rs::Content::Flash(url) => url,
     };
 
-    client.execute("INSERT INTO submission (id, artist_id, url, filename, hash, rating, posted_at, description) VALUES ($1, $2, $3, $4, decode($5, 'base64'), $6, $7, $8)", &[
+    client.execute("INSERT INTO submission (id, artist_id, url, filename, hash, rating, posted_at, description, hash1, hash2, hash3, hash4, hash5, hash6, hash7, hash8) VALUES ($1, $2, $3, $4, decode($5, 'base64'), $6, $7, $8, get_byte(decode($5, 'base64'), 0), get_byte(decode($5, 'base64'), 1), get_byte(decode($5, 'base64'), 2), get_byte(decode($5, 'base64'), 3), get_byte(decode($5, 'base64'), 4), get_byte(decode($5, 'base64'), 5), get_byte(decode($5, 'base64'), 6), get_byte(decode($5, 'base64'), 7))", &[
         &sub.id, &artist_id, &url, &sub.filename, &hash, &sub.rating.serialize(), &sub.posted_at, &sub.description,
     ])?;
 
