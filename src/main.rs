@@ -100,7 +100,9 @@ fn main() {
         std::env::var("FA_B").expect("missing fa cookie b"),
     );
 
-    let fa = furaffinity_rs::FurAffinity::new(cookie_a, cookie_b);
+    let user_agent = std::env::var("USER_AGENT").expect("missing user agent");
+
+    let fa = furaffinity_rs::FurAffinity::new(cookie_a, cookie_b, user_agent);
 
     let dsn = std::env::var("POSTGRES_DSN").expect("missing postgres dsn");
 
@@ -114,7 +116,7 @@ fn main() {
 
         let latest_id = fa.latest_id().expect("unable to get latest id");
 
-        'id: for id in ids_to_check(&client, latest_id) {
+        for id in ids_to_check(&client, latest_id) {
             'attempt: for attempt in 0..3 {
                 if !has_submission(&client, id) {
                     println!("loading submission {}", id);

@@ -13,4 +13,4 @@ chrono = "^0.4"
 
 [dependencies.furaffinity-rs]
 git = "https://git.huefox.com/syfaro/furaffinity-rs"
-rev = "9a131bdf3b88ba9ba532ba262643be5b1efa3a5d"
+rev = "35478cb1402b26842900546f5cb1130238866c22"
