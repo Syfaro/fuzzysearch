@@ -1,6 +1,7 @@
-type Client = r2d2::PooledConnection<r2d2_postgres::PostgresConnectionManager>;
+type Client =
+    r2d2::PooledConnection<r2d2_postgres::PostgresConnectionManager<tokio_postgres::tls::NoTls>>;
 
-fn lookup_tag(client: &Client, tag: &str) -> i32 {
+fn lookup_tag(client: &mut Client, tag: &str) -> i32 {
     if let Some(row) = client
         .query("SELECT id FROM tag WHERE name = $1", &[&tag])
         .unwrap()
@@ -19,7 +20,7 @@ fn lookup_tag(client: &Client, tag: &str) -> i32 {
         .get("id")
 }
 
-fn lookup_artist(client: &Client, artist: &str) -> i32 {
+fn lookup_artist(client: &mut Client, artist: &str) -> i32 {
     if let Some(row) = client
         .query("SELECT id FROM artist WHERE name = $1", &[&artist])
         .unwrap()
@@ -41,7 +42,7 @@ fn lookup_artist(client: &Client, artist: &str) -> i32 {
         .get("id")
 }
 
-fn has_submission(client: &Client, id: i32) -> bool {
+fn has_submission(client: &mut Client, id: i32) -> bool {
     client
         .query("SELECT id FROM submission WHERE id = $1", &[&id])
         .expect("unable to run query")
@@ -50,7 +51,7 @@ fn has_submission(client: &Client, id: i32) -> bool {
         .is_some()
 }
 
-fn ids_to_check(client: &Client, max: i32) -> Vec<i32> {
+fn ids_to_check(client: &mut Client, max: i32) -> Vec<i32> {
     let min = max - 100;
 
     let rows = client.query("SELECT sid FROM generate_series(LEAST($1::int, (SELECT MIN(id) FROM SUBMISSION)), $2::int) sid WHERE sid NOT IN (SELECT id FROM submission where id = sid)", &[&min, &max]).unwrap();
@@ -59,14 +60,14 @@ fn ids_to_check(client: &Client, max: i32) -> Vec<i32> {
 }
 
 fn insert_submission(
-    client: &Client,
+    mut client: &mut Client,
     sub: &furaffinity_rs::Submission,
 ) -> Result<(), postgres::Error> {
-    let artist_id = lookup_artist(&client, &sub.artist);
+    let artist_id = lookup_artist(&mut client, &sub.artist);
     let tag_ids: Vec<i32> = sub
         .tags
         .iter()
-        .map(|tag| lookup_tag(&client, &tag))
+        .map(|tag| lookup_tag(&mut client, &tag))
         .collect();
 
     let hash = sub.hash.clone();
@@ -84,13 +85,13 @@ fn insert_submission(
         "INSERT INTO tag_to_post (tag_id, post_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
     )?;
     for tag_id in tag_ids {
-        stmt.execute(&[&tag_id, &sub.id])?;
+        client.execute(&stmt, &[&tag_id, &sub.id])?;
     }
 
     Ok(())
 }
 
-fn insert_null_submission(client: &Client, id: i32) -> Result<u64, postgres::Error> {
+fn insert_null_submission(client: &mut Client, id: i32) -> Result<u64, postgres::Error> {
     client.execute("INSERT INTO SUBMISSION (id) VALUES ($1)", &[&id])
 }
 
@@ -107,18 +108,18 @@ fn main() {
     let dsn = std::env::var("POSTGRES_DSN").expect("missing postgres dsn");
 
     let manager =
-        r2d2_postgres::PostgresConnectionManager::new(dsn, r2d2_postgres::TlsMode::None).unwrap();
+        r2d2_postgres::PostgresConnectionManager::new(dsn.parse().unwrap(), postgres::NoTls);
 
     let pool = r2d2::Pool::new(manager).unwrap();
 
     'main: loop {
-        let client = pool.get().unwrap();
+        let mut client = pool.get().unwrap();
 
         let latest_id = fa.latest_id().expect("unable to get latest id");
 
-        for id in ids_to_check(&client, latest_id) {
+        for id in ids_to_check(&mut client, latest_id) {
             'attempt: for attempt in 0..3 {
-                if !has_submission(&client, id) {
+                if !has_submission(&mut client, id) {
                     println!("loading submission {}", id);
 
                     let sub = match fa.get_submission(id) {
@@ -139,7 +140,7 @@ fn main() {
                         Some(sub) => sub,
                         None => {
                             println!("did not exist");
-                            insert_null_submission(&client, id).unwrap();
+                            insert_null_submission(&mut client, id).unwrap();
                             break 'attempt;
                         }
                     };
@@ -149,10 +150,10 @@ fn main() {
                         Err(e) => {
                             println!("unable to hash image: {:?}", e);
                             sub
-                        },
+                        }
                     };
 
-                    insert_submission(&client, &sub).unwrap();
+                    insert_submission(&mut client, &sub).unwrap();
 
                     break 'attempt;
                 }

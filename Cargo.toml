@@ -5,11 +5,12 @@ authors = ["Syfaro <syfaro@huefox.com>"]
 edition = "2018"
 
 [dependencies]
-reqwest = "^0.9"
-postgres = {version = "^0.15", features = ["with-chrono"]}
-r2d2_postgres = "^0.14"
-r2d2 = "^0.8"
-chrono = "^0.4"
+reqwest = "0.9"
+postgres = { version = "0.17.0-alpha.2", features = ["with-chrono-0_4"] }
+tokio-postgres = { version = "0.5.0-alpha.2" }
+r2d2_postgres = " 0.16.0-alpha.2"
+r2d2 = "0.8"
+chrono = "0.4"
 
 [dependencies.furaffinity-rs]
 git = "https://git.huefox.com/syfaro/furaffinity-rs"
