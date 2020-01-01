@@ -275,7 +275,7 @@ name = "fa-watcher"
 version = "0.1.0"
 dependencies = [
  "chrono 0.4.10 (registry+https://github.com/rust-lang/crates.io-index)",
- "furaffinity-rs 0.1.0 (git+https://git.huefox.com/syfaro/furaffinity-rs?rev=d6d5a61bfe041e8ecbbe135c43dcbb577961e2f3)",
+ "furaffinity-rs 0.1.0 (git+https://git.huefox.com/syfaro/furaffinity-rs?rev=2477271b841335ee894cac18a74a338f9dc7262f)",
  "postgres 0.17.0-alpha.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "r2d2 0.8.7 (registry+https://github.com/rust-lang/crates.io-index)",
  "r2d2_postgres 0.16.0-alpha.2 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -334,7 +334,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 [[package]]
 name = "furaffinity-rs"
 version = "0.1.0"
-source = "git+https://git.huefox.com/syfaro/furaffinity-rs?rev=d6d5a61bfe041e8ecbbe135c43dcbb577961e2f3#d6d5a61bfe041e8ecbbe135c43dcbb577961e2f3"
+source = "git+https://git.huefox.com/syfaro/furaffinity-rs?rev=2477271b841335ee894cac18a74a338f9dc7262f#2477271b841335ee894cac18a74a338f9dc7262f"
 dependencies = [
  "chrono 0.4.10 (registry+https://github.com/rust-lang/crates.io-index)",
  "image 0.22.3 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2155,7 +2155,7 @@ dependencies = [
 "checksum fuchsia-cprng 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)" = "a06f77d526c1a601b7c4cdd98f54b5eaabffc14d5f2f0296febdc7f357c6d3ba"
 "checksum fuchsia-zircon 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)" = "2e9763c69ebaae630ba35f74888db465e49e259ba1bc0eda7d06f4a067615d82"
 "checksum fuchsia-zircon-sys 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)" = "3dcaa9ae7725d12cdb85b3ad99a434db70b468c09ded17e012d86b5c1010f7a7"
-"checksum furaffinity-rs 0.1.0 (git+https://git.huefox.com/syfaro/furaffinity-rs?rev=d6d5a61bfe041e8ecbbe135c43dcbb577961e2f3)" = "<none>"
+"checksum furaffinity-rs 0.1.0 (git+https://git.huefox.com/syfaro/furaffinity-rs?rev=2477271b841335ee894cac18a74a338f9dc7262f)" = "<none>"
 "checksum futf 0.1.4 (registry+https://github.com/rust-lang/crates.io-index)" = "7c9c1ce3fa9336301af935ab852c437817d14cd33690446569392e65170aac3b"
 "checksum futures 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)" = "b6f16056ecbb57525ff698bb955162d0cd03bee84e6241c27ff75c08d8ca5987"
 "checksum futures-channel 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)" = "fcae98ca17d102fd8a3603727b9259fcf7fa4239b603d2142926189bc8999b86"
