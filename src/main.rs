@@ -73,7 +73,7 @@ fn insert_submission(
     let hash = sub.hash.clone();
     let url = sub.content.url();
 
-    client.execute("INSERT INTO submission (id, artist_id, url, filename, hash, rating, posted_at, description, hash_int) VALUES ($1, $2, $3, $4, decode($5, 'base64'), $6, $7, $8, $9)", &[
+    client.execute("INSERT INTO submission (id, artist_id, url, filename, hash, rating, posted_at, description, hash_int, file_id) VALUES ($1, $2, $3, $4, decode($5, 'base64'), $6, $7, $8, $9, CASE WHEN isnumeric(split_part($4, '.', 1)) THEN split_part($4, '.', 1)::int ELSE null END)", &[
         &sub.id, &artist_id, &url, &sub.filename, &hash, &sub.rating.serialize(), &sub.posted_at, &sub.description, &sub.hash_num,
     ])?;
 
