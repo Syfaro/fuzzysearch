@@ -77,6 +77,7 @@ async fn main() {
                     hash_error IS NULL AND
                     data->>'file_ext' IN ('jpg', 'png') AND
                     data->>'file_url' <> '/images/deleted-preview.png'
+                ORDER BY id DESC
                 LIMIT 100",
                 &[],
             )
