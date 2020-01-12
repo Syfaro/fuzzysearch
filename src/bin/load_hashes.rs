@@ -11,8 +11,6 @@ async fn hash_url(
     client: std::sync::Arc<reqwest::Client>,
     url: String,
 ) -> Result<(img_hash::ImageHash, i64), image::ImageError> {
-    println!("loading {}", url);
-
     let data = client
         .get(&url)
         .send()
