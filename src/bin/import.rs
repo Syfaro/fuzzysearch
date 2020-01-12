@@ -9,7 +9,7 @@ async fn load_page(
 
     if let Some(before_id) = before_id {
         query.push(("before_id", before_id.to_string()));
-        if before_id == 1 {
+        if before_id <= 14 {
             panic!("that's it.");
         }
     }
