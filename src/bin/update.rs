@@ -73,6 +73,8 @@ async fn main() {
         .build()
         .expect("Unable to build http client");
 
+    println!("max is id: {}", max_id);
+
     let mut now;
     let mut min_id: Option<i32> = None;
 
@@ -90,9 +92,10 @@ async fn main() {
         .expect("Unable to insert");
 
         if let Some(min_id) = min_id {
-            if min_id >= max_id {
+            println!("min id is: {}", min_id);
+            if min_id <= max_id {
                 println!("finished run, {}, {}", min_id, max_id);
-                break
+                break;
             }
         }
 

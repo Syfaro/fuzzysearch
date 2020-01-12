@@ -1,8 +1,9 @@
 #[derive(Debug)]
 struct Row {
     id: i32,
-    artists: Vec<String>,
-    sources: Vec<String>,
+    artists: Option<Vec<String>>,
+    sources: Option<Vec<String>>,
+    distance: Option<u64>,
 }
 
 async fn get_hash_distance_from_url(
@@ -53,6 +54,7 @@ async fn main() {
         .query(
             "SELECT
                 post.id id,
+                post.hash hash,
                 artists_agg.artists artists,
                 sources_agg.sources sources
             FROM
@@ -69,19 +71,36 @@ async fn main() {
         .await
         .expect("unable to query")
         .into_iter()
-        .map(|row| Row {
-            id: row.get("id"),
-            sources: row.get("sources"),
-            artists: row.get("artists"),
+        .map(|row| {
+            let distance = row
+                .get::<&str, Option<i64>>("hash")
+                .map(|hash| hamming::distance_fast(&hash.to_be_bytes(), &bytes).unwrap());
+
+            Row {
+                id: row.get("id"),
+                sources: row.get("sources"),
+                artists: row.get("artists"),
+                distance,
+            }
         });
 
     for row in rows {
         println!(
-            "Possible match: https://e621.net/post/show/{} by {}",
+            "Possible match: [distance of {}] https://e621.net/post/show/{} by {}",
+            row.distance.unwrap_or_else(u64::max_value),
             row.id,
-            row.artists.join(", ")
+            row.artists
+                .map(|artists| artists.join(", "))
+                .unwrap_or_else(|| "unknown".to_string())
         );
-        for source in row.sources {
+        let sources = match row.sources {
+            Some(source) => source,
+            _ => {
+                println!("no sources");
+                continue;
+            }
+        };
+        for source in sources {
             let distance = get_hash_distance_from_url(&client, &source, &hash).await;
             println!(
                 "- {} (distance of {})",

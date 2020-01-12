@@ -46,10 +46,10 @@ async fn main() {
         tokio_postgres::NoTls,
     );
 
-    let pool = match Pool::builder().build(manager).await {
-        Ok(pool) => pool,
-        Err(e) => panic!("unable to build pool: {}", e),
-    };
+    let pool = Pool::builder()
+        .build(manager)
+        .await
+        .expect("unable to build pool");
 
     let client = reqwest::Client::builder()
         .user_agent("Syfaro test client syfaro@huefox.com")
@@ -58,7 +58,7 @@ async fn main() {
     let client = std::sync::Arc::new(client);
 
     loop {
-        println!("getting next 100 posts");
+        println!("getting next 384 posts");
 
         let db = pool.clone();
 
@@ -78,7 +78,7 @@ async fn main() {
                     data->>'file_ext' IN ('jpg', 'png') AND
                     data->>'file_url' <> '/images/deleted-preview.png'
                 ORDER BY id DESC
-                LIMIT 100",
+                LIMIT 384",
                 &[],
             )
             .await

@@ -8,6 +8,7 @@ edition = "2018"
 reqwest = { version = "*", features = ["json"] }
 tokio = { version = "0.2", features = ["full"] }
 futures = { version = "*", features = ["thread-pool"] }
+hamming = "0.1.3"
 
 serde = "*"
 serde_json = "*"
