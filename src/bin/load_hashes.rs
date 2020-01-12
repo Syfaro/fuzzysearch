@@ -10,7 +10,7 @@ struct NeededPost {
 async fn hash_url(
     client: std::sync::Arc<reqwest::Client>,
     url: String,
-) -> (img_hash::ImageHash, i64) {
+) -> Result<(img_hash::ImageHash, i64), image::ImageError> {
     println!("loading {}", url);
 
     let data = client
@@ -23,7 +23,7 @@ async fn hash_url(
         .expect("unable to get bytes");
 
     let hasher = furaffinity_rs::get_hasher();
-    let image = image::load_from_memory(&data).expect("unable to parse image");
+    let image = image::load_from_memory(&data)?;
 
     let hash = hasher.hash_image(&image);
     let mut bytes: [u8; 8] = [0; 8];
@@ -33,7 +33,7 @@ async fn hash_url(
 
     println!("{} - {}", url, num);
 
-    (hash, num)
+    Ok((hash, num))
 }
 
 #[tokio::main]
@@ -94,13 +94,31 @@ async fn main() {
                 let client = client.clone();
                 let id = post.id;
 
-                hash_url(client, post.full_url.clone()).then(move |(_hash, num)| async move {
-                    db.get()
-                        .await
-                        .unwrap()
-                        .execute("UPDATE post SET hash = $2 WHERE id = $1", &[&id, &num])
-                        .await
-                        .expect("Unable to update hash in database");
+                hash_url(client, post.full_url.clone()).then(move |res| async move {
+                    match res {
+                        Ok((_hash, num)) => {
+                            db.get()
+                                .await
+                                .unwrap()
+                                .execute("UPDATE post SET hash = $2 WHERE id = $1", &[&id, &num])
+                                .await
+                                .expect("Unable to update hash in database");
+                        }
+                        Err(e) => {
+                            use std::error::Error;
+                            let desc = e.description();
+                            println!("hashing error - {}", desc);
+                            db.get()
+                                .await
+                                .unwrap()
+                                .execute(
+                                    "UPDATE post SET hash_error = $2 WHERE id = $1",
+                                    &[&id, &desc],
+                                )
+                                .await
+                                .expect("Unable to update hash in database");
+                        }
+                    };
                 })
             });
 
