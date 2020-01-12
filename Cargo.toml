@@ -1,0 +1,21 @@
+[package]
+name = "e621-watcher"
+version = "0.1.0"
+authors = ["Syfaro <syfaro@huefox.com>"]
+edition = "2018"
+
+[dependencies]
+reqwest = { version = "*", features = ["json"] }
+tokio = { version = "0.2", features = ["full"] }
+futures = { version = "*", features = ["thread-pool"] }
+
+serde = "*"
+serde_json = "*"
+
+tokio-postgres = { version = "0.5.1", features = ["with-serde_json-1"] }
+bb8 = { git = "https://github.com/khuey/bb8.git" }
+bb8-postgres = { git = "https://github.com/khuey/bb8.git" }
+
+furaffinity-rs = { git = "https://git.huefox.com/syfaro/furaffinity-rs.git" }
+image = "0.22"
+img_hash = "*"
