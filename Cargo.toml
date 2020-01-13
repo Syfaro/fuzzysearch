@@ -5,14 +5,14 @@ authors = ["Syfaro <syfaro@huefox.com>"]
 edition = "2018"
 
 [dependencies]
-reqwest = { git = "https://github.com/seanmonstar/reqwest" }
-postgres = { version = "0.17.0-alpha.2", features = ["with-chrono-0_4"] }
+reqwest = "0.10.1"
+postgres = { version = "0.17.0", features = ["with-chrono-0_4"] }
 tokio = { version = "0.2", features = ["macros", "time"] }
-tokio-postgres = { version = "0.5.0-alpha.2" }
-r2d2_postgres = " 0.16.0-alpha.2"
+tokio-postgres = { version = "0.5.0" }
+r2d2_postgres = " 0.16.0"
 r2d2 = "0.8"
 chrono = "0.4"
 
 [dependencies.furaffinity-rs]
 git = "https://git.huefox.com/syfaro/furaffinity-rs"
-rev = "75254a58385b3a8ea7fde0c86ff764fd1688bad9"
+rev = "1548d7f0132e65b360af8bef16f864a1c3b3df02"

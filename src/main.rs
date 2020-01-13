@@ -125,7 +125,8 @@ async fn main() {
                         Err(e) => {
                             println!("got error: {:?}, retry {}", e.message, e.retry);
                             if e.retry {
-                                tokio::time::delay_for(std::time::Duration::from_secs(attempt + 1)).await;
+                                tokio::time::delay_for(std::time::Duration::from_secs(attempt + 1))
+                                    .await;
                                 continue 'attempt;
                             } else {
                                 println!("unrecoverable, exiting");
