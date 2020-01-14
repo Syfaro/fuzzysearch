@@ -86,19 +86,16 @@ async fn main() {
         .expect("Unable to build http client");
     let client = std::sync::Arc::new(client);
 
-    let mut needed_posts = load_next_posts(pool.clone()).await;
-
     loop {
         println!("running loop");
+
+        let needed_posts = load_next_posts(pool.clone()).await;
 
         if needed_posts.is_empty() {
             println!("no posts, waiting a minute");
             tokio::time::delay_for(std::time::Duration::from_secs(60)).await;
             continue;
         }
-
-        let db = pool.clone();
-        let posts_fut = tokio::spawn(async move { load_next_posts(db).await });
 
         for chunk in needed_posts.chunks(8) {
             let futs = chunk.iter().map(|post| {
@@ -136,7 +133,5 @@ async fn main() {
 
             futures::future::join_all(futs).await;
         }
-
-        needed_posts = posts_fut.await.unwrap();
     }
 }
