@@ -15,11 +15,11 @@ futures-util = "0.3.1"
 bytes = "0.5.3"
 
 serde = { version = "1.0.104", features = ["derive"] }
-warp = { git = "https://github.com/seanmonstar/warp.git" }
+warp = "0.2.0"
 
 tokio-postgres = "0.5.1"
-bb8 = { git = "https://github.com/khuey/bb8.git" }
-bb8-postgres = { git = "https://github.com/khuey/bb8.git" }
+bb8 = "0.4.0"
+bb8-postgres = "0.4.0"
 
 img_hash = "3.0.0"
 image = "0.22"

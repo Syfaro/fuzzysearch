@@ -1,4 +1,4 @@
-FROM rustlang/rust:nightly-slim AS builder
+FROM rust:1-slim AS builder
 WORKDIR /src
 COPY . .
 RUN cargo install --root / --path .
