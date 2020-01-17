@@ -1,0 +1,26 @@
+---
+kind: pipeline
+type: docker
+name: default
+
+platform:
+  os: linux
+  arch: amd64
+
+steps:
+- name: docker
+  image: plugins/docker
+  settings:
+    auto_tag: true
+    password:
+      from_secret: docker_password
+    registry: registry.huefox.com
+    repo: registry.huefox.com/fuzzysearch
+    username:
+      from_secret: docker_username
+
+trigger:
+  branch:
+  - master
+
+...
