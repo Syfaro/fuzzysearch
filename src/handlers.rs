@@ -1,7 +1,7 @@
 use crate::types::*;
 use crate::utils::{extract_e621_rows, extract_fa_rows};
 use crate::{rate_limit, Pool};
-use log::debug;
+use log::{info, debug};
 use warp::{reject, Rejection, Reply};
 
 fn map_bb8_err(err: bb8::RunError<tokio_postgres::Error>) -> Rejection {
@@ -207,6 +207,8 @@ pub async fn search_file(
 }
 
 pub async fn handle_rejection(err: Rejection) -> Result<impl Reply, std::convert::Infallible> {
+    info!("Had rejection: {:?}", err);
+
     let (code, message) = if err.is_not_found() {
         (
             warp::http::StatusCode::NOT_FOUND,
