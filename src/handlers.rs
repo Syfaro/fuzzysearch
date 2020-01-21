@@ -1,7 +1,8 @@
+use crate::models::image_query;
 use crate::types::*;
 use crate::utils::{extract_e621_rows, extract_fa_rows};
 use crate::{rate_limit, Pool};
-use log::{info, debug};
+use log::{debug, info};
 use warp::{reject, Rejection, Reply};
 
 fn map_bb8_err(err: bb8::RunError<tokio_postgres::Error>) -> Rejection {
@@ -37,6 +38,7 @@ impl warp::reject::Reject for Error {}
 
 pub async fn search_image(
     form: warp::multipart::FormData,
+    opts: ImageSearchOpts,
     db: Pool,
     api_key: String,
 ) -> Result<impl Reply, Rejection> {
@@ -77,52 +79,20 @@ pub async fn search_image(
 
     debug!("Matching hash {}", num);
 
-    let params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = vec![&num];
-
-    let fa = db.query(
-        "SELECT
-                submission.id,
-                submission.url,
-                submission.filename,
-                submission.file_id,
-                submission.hash,
-                submission.hash_int,
-                artist.name
-            FROM
-                submission
-            JOIN artist
-                ON artist.id = submission.artist_id
-            WHERE
-                hash_int <@ ($1, 10)",
-        &params,
-    );
-
-    let e621 = db.query(
-        "SELECT
-                e621.id,
-                e621.hash,
-                e621.data->>'file_url' url,
-                e621.data->>'md5' md5,
-                sources.list sources,
-                artists.list artists,
-                (e621.data->>'md5') || '.' || (e621.data->>'file_ext') filename
-            FROM
-                e621,
-                LATERAL (
-                    SELECT array_agg(s) list
-                    FROM jsonb_array_elements_text(data->'sources') s
-                ) sources,
-                LATERAL (
-                    SELECT array_agg(s) list
-                    FROM jsonb_array_elements_text(data->'artist') s
-                ) artists
-            WHERE
-                hash <@ ($1, 10)",
-        &params,
-    );
-
-    let results = futures::future::join(fa, e621).await;
-    let (fa_results, e621_results) = (results.0.unwrap(), results.1.unwrap());
+    let (fa_results, e621_results) = {
+        if opts.search_type == Some(ImageSearchType::Force) {
+            image_query(&db, num, 10).await.unwrap()
+        } else {
+            let (fa_results, e621_results) = image_query(&db, num, 0).await.unwrap();
+            if fa_results.len() + e621_results.len() == 0
+                && opts.search_type != Some(ImageSearchType::Exact)
+            {
+                image_query(&db, num, 10).await.unwrap()
+            } else {
+                (fa_results, e621_results)
+            }
+        }
+    };
 
     let mut items = Vec::with_capacity(fa_results.len() + e621_results.len());
 

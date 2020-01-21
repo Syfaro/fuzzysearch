@@ -27,9 +27,12 @@ async fn main() {
     let log = warp::log("fuzzysearch");
     let cors = warp::cors()
         .allow_any_origin()
+        .allow_headers(vec!["x-api-key"])
         .allow_methods(vec!["GET", "POST"]);
 
-    let api = filters::search(db_pool);
+    let options = warp::options().map(|| "✓");
+
+    let api = options.or(filters::search(db_pool));
     let routes = api
         .or(warp::path::end()
             .map(|| warp::redirect(warp::http::Uri::from_static("https://fuzzysearch.net"))))

@@ -68,6 +68,20 @@ pub struct FileSearchOpts {
     pub url: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct ImageSearchOpts {
+    #[serde(rename = "type")]
+    pub search_type: Option<ImageSearchType>,
+}
+
+#[derive(Debug, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum ImageSearchType {
+    Close,
+    Exact,
+    Force,
+}
+
 #[derive(Debug, Serialize)]
 pub struct ImageSimilarity {
     pub hash: i64,

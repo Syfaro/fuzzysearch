@@ -20,6 +20,7 @@ pub fn search_image(db: Pool) -> impl Filter<Extract = impl Reply, Error = Rejec
     warp::path("image")
         .and(warp::post())
         .and(warp::multipart::form().max_length(1024 * 1024 * 10))
+        .and(warp::query::<ImageSearchOpts>())
         .and(with_pool(db))
         .and(with_api_key())
         .and_then(handlers::search_image)
