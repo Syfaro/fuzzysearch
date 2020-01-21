@@ -63,7 +63,7 @@ async fn main() {
     });
 
     let max_id: i32 = db
-        .query_one("SELECT max(id) FROM post", &[])
+        .query_one("SELECT max(id) FROM e621", &[])
         .await
         .map(|row| row.get("max"))
         .expect("Unable to get max post");
@@ -85,7 +85,7 @@ async fn main() {
         min_id = ids.into_iter().min();
 
         db.execute(
-            "INSERT INTO post (data) SELECT json_array_elements($1::json) ON CONFLICT DO NOTHING",
+            "INSERT INTO e621 (data) SELECT json_array_elements($1::json) ON CONFLICT DO NOTHING",
             &[&post_data],
         )
         .await

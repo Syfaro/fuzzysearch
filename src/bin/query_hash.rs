@@ -58,7 +58,7 @@ async fn main() {
                 artists_agg.artists artists,
                 sources_agg.sources sources
             FROM
-                post,
+                e621,
                 LATERAL (
                     SELECT array_agg(v) artists FROM jsonb_array_elements_text(data->'artist') v
                 ) artists_agg,
@@ -85,9 +85,17 @@ async fn main() {
         });
 
     for row in rows {
+        let dist = row.distance.unwrap_or_else(u64::max_value);
+        if dist > 5 {
+            println!(
+                "Skipping https://e621.net/post/show/{}, distance too high: {}",
+                row.id, dist
+            );
+            continue;
+        }
         println!(
             "Possible match: [distance of {}] https://e621.net/post/show/{} by {}",
-            row.distance.unwrap_or_else(u64::max_value),
+            dist,
             row.id,
             row.artists
                 .map(|artists| artists.join(", "))

@@ -66,7 +66,7 @@ async fn main() {
     });
 
     db.execute(
-        "CREATE TABLE IF NOT EXISTS post (id INTEGER PRIMARY KEY, data JSONB)",
+        "CREATE TABLE IF NOT EXISTS e621 (id INTEGER PRIMARY KEY, hash BIGINT, data JSONB, hash_error TEXT)",
         &[],
     )
     .await
@@ -84,13 +84,13 @@ async fn main() {
     .await
     .expect("Unable to create function");
 
-    db.execute("DROP TRIGGER IF EXISTS call_extract_post_data ON post", &[])
+    db.execute("DROP TRIGGER IF EXISTS call_extract_post_data ON e621", &[])
         .await
         .expect("Unable to drop trigger");
-    db.execute("CREATE TRIGGER call_extract_post_data BEFORE INSERT ON post FOR EACH ROW EXECUTE PROCEDURE extract_post_data()", &[]).await.expect("Unable to create trigger");
+    db.execute("CREATE TRIGGER call_extract_post_data BEFORE INSERT ON e621 FOR EACH ROW EXECUTE PROCEDURE extract_post_data()", &[]).await.expect("Unable to create trigger");
 
     let mut min_id = db
-        .query_one("SELECT MIN(id) FROM post", &[])
+        .query_one("SELECT MIN(id) FROM e621", &[])
         .await
         .map(|row| row.get("min"))
         .expect("Unable to get min post");
@@ -109,7 +109,7 @@ async fn main() {
         min_id = ids.into_iter().min();
 
         db.execute(
-            "INSERT INTO post (data) SELECT json_array_elements($1::json)",
+            "INSERT INTO e621 (data) SELECT json_array_elements($1::json)",
             &[&post_data],
         )
         .await

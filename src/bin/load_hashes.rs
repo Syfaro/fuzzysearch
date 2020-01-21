@@ -45,7 +45,7 @@ async fn load_next_posts(
                     id,
                     data->>'file_url' file_url
                 FROM
-                    post
+                    e621
                 WHERE
                     hash IS NULL AND
                     hash_error IS NULL AND
@@ -109,7 +109,7 @@ async fn main() {
                             db.get()
                                 .await
                                 .unwrap()
-                                .execute("UPDATE post SET hash = $2 WHERE id = $1", &[&id, &num])
+                                .execute("UPDATE e621 SET hash = $2 WHERE id = $1", &[&id, &num])
                                 .await
                                 .expect("Unable to update hash in database");
                         }
@@ -121,7 +121,7 @@ async fn main() {
                                 .await
                                 .unwrap()
                                 .execute(
-                                    "UPDATE post SET hash_error = $2 WHERE id = $1",
+                                    "UPDATE e621 SET hash_error = $2 WHERE id = $1",
                                     &[&id, &desc],
                                 )
                                 .await
