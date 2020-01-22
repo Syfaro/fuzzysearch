@@ -37,52 +37,67 @@ pub async fn lookup_api_key(key: &str, db: DB<'_>) -> Option<ApiKey> {
 
 pub async fn image_query(
     db: DB<'_>,
-    num: i64,
+    hashes: Vec<i64>,
     distance: i64,
 ) -> Result<(Vec<tokio_postgres::Row>, Vec<tokio_postgres::Row>), tokio_postgres::Error> {
-    let params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = vec![&num, &distance];
+    let mut params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
+        Vec::with_capacity(hashes.len() + 1);
+    params.insert(0, &distance);
 
-    let fa = db.query(
+    let mut fa_where_clause = Vec::with_capacity(hashes.len());
+    let mut e621_where_clause = Vec::with_capacity(hashes.len());
+
+    for (idx, hash) in hashes.iter().enumerate() {
+        params.push(hash);
+
+        fa_where_clause.push(format!(" hash_int <@ (${}, $1)", idx + 2));
+        e621_where_clause.push(format!(" hash <@ (${}, $1)", idx + 2));
+    }
+
+    let fa_query = format!(
         "SELECT
-                submission.id,
-                submission.url,
-                submission.filename,
-                submission.file_id,
-                submission.hash,
-                submission.hash_int,
-                artist.name
-            FROM
-                submission
-            JOIN artist
-                ON artist.id = submission.artist_id
-            WHERE
-                hash_int <@ ($1, $2)",
-        &params,
+            submission.id,
+            submission.url,
+            submission.filename,
+            submission.file_id,
+            submission.hash,
+            submission.hash_int,
+            artist.name
+        FROM
+            submission
+        JOIN artist
+            ON artist.id = submission.artist_id
+        WHERE
+            {}",
+        fa_where_clause.join(" OR ")
     );
 
-    let e621 = db.query(
+    let e621_query = format!(
         "SELECT
-                e621.id,
-                e621.hash,
-                e621.data->>'file_url' url,
-                e621.data->>'md5' md5,
-                sources.list sources,
-                artists.list artists,
-                (e621.data->>'md5') || '.' || (e621.data->>'file_ext') filename
-            FROM
-                e621,
-                LATERAL (
-                    SELECT array_agg(s) list
-                    FROM jsonb_array_elements_text(data->'sources') s
-                ) sources,
-                LATERAL (
-                    SELECT array_agg(s) list
-                    FROM jsonb_array_elements_text(data->'artist') s
-                ) artists
-            WHERE
-                hash <@ ($1, $2)",
-        &params,
+            e621.id,
+            e621.hash,
+            e621.data->>'file_url' url,
+            e621.data->>'md5' md5,
+            sources.list sources,
+            artists.list artists,
+            (e621.data->>'md5') || '.' || (e621.data->>'file_ext') filename
+        FROM
+            e621,
+            LATERAL (
+                SELECT array_agg(s) list
+                FROM jsonb_array_elements_text(data->'sources') s
+            ) sources,
+            LATERAL (
+                SELECT array_agg(s) list
+                FROM jsonb_array_elements_text(data->'artist') s
+            ) artists
+        WHERE
+            {}",
+        e621_where_clause.join(" OR ")
     );
+
+    let fa = db.query::<str>(&*fa_query, &params);
+    let e621 = db.query::<str>(&*e621_query, &params);
 
     let results = futures::future::join(fa, e621).await;
     Ok((results.0?, results.1?))

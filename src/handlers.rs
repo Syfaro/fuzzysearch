@@ -81,13 +81,13 @@ pub async fn search_image(
 
     let (fa_results, e621_results) = {
         if opts.search_type == Some(ImageSearchType::Force) {
-            image_query(&db, num, 10).await.unwrap()
+            image_query(&db, vec![num], 10).await.unwrap()
         } else {
-            let (fa_results, e621_results) = image_query(&db, num, 0).await.unwrap();
+            let (fa_results, e621_results) = image_query(&db, vec![num], 0).await.unwrap();
             if fa_results.len() + e621_results.len() == 0
                 && opts.search_type != Some(ImageSearchType::Exact)
             {
-                image_query(&db, num, 10).await.unwrap()
+                image_query(&db, vec![num], 10).await.unwrap()
             } else {
                 (fa_results, e621_results)
             }
@@ -112,6 +112,36 @@ pub async fn search_image(
     };
 
     Ok(warp::reply::json(&similarity))
+}
+
+pub async fn search_hashes(
+    opts: HashSearchOpts,
+    db: Pool,
+    api_key: String,
+) -> Result<impl Reply, Rejection> {
+    let db = db.get().await.map_err(map_bb8_err)?;
+
+    let hashes: Vec<i64> = opts
+        .hashes
+        .split(',')
+        .filter_map(|hash| hash.parse::<i64>().ok())
+        .collect();
+
+    if hashes.is_empty() {
+        return Err(warp::reject::custom(Error::InvalidData));
+    }
+
+    rate_limit!(&api_key, &db, image_limit, "image", hashes.len() as i16);
+
+    let (fa_matches, e621_matches) = image_query(&db, hashes, 10)
+        .await
+        .map_err(|err| reject::custom(Error::from(err)))?;
+
+    let mut matches = Vec::with_capacity(fa_matches.len() + e621_matches.len());
+    matches.extend(extract_fa_rows(fa_matches, None));
+    matches.extend(extract_e621_rows(e621_matches, None));
+
+    Ok(warp::reply::json(&matches))
 }
 
 pub async fn search_file(

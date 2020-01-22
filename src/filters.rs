@@ -4,7 +4,9 @@ use std::convert::Infallible;
 use warp::{Filter, Rejection, Reply};
 
 pub fn search(db: Pool) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
-    search_file(db.clone()).or(search_image(db))
+    search_file(db.clone())
+        .or(search_image(db.clone()))
+        .or(search_hashes(db))
 }
 
 pub fn search_file(db: Pool) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
@@ -24,6 +26,15 @@ pub fn search_image(db: Pool) -> impl Filter<Extract = impl Reply, Error = Rejec
         .and(with_pool(db))
         .and(with_api_key())
         .and_then(handlers::search_image)
+}
+
+pub fn search_hashes(db: Pool) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
+    warp::path("hashes")
+        .and(warp::get())
+        .and(warp::query::<HashSearchOpts>())
+        .and(with_pool(db))
+        .and(with_api_key())
+        .and_then(handlers::search_hashes)
 }
 
 fn with_api_key() -> impl Filter<Extract = (String,), Error = Rejection> + Clone {

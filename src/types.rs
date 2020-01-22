@@ -93,3 +93,8 @@ pub struct ErrorMessage {
     pub code: u16,
     pub message: String,
 }
+
+#[derive(Deserialize)]
+pub struct HashSearchOpts {
+    pub hashes: String,
+}
