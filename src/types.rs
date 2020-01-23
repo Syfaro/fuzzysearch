@@ -25,7 +25,8 @@ pub enum RateLimit {
 /// A general type for every file.
 #[derive(Debug, Default, Serialize)]
 pub struct File {
-    pub id: i32,
+    pub id: i64,
+    pub id_str: String,
     pub url: String,
     pub filename: String,
     pub artists: Option<Vec<String>>,
@@ -46,6 +47,7 @@ pub enum SiteInfo {
     FurAffinity(FurAffinityFile),
     #[serde(rename = "e621")]
     E621(E621File),
+    Twitter,
 }
 
 /// Information about a file hosted on FurAffinity.

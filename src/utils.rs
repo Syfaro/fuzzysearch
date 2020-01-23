@@ -76,7 +76,8 @@ pub fn extract_fa_rows<'a>(
         let dbbytes: Vec<u8> = row.get("hash");
 
         File {
-            id: row.get("id"),
+            id: row.get::<&str, i32>("id") as i64,
+            id_str: row.get::<&str, i32>("id").to_string(),
             url: row.get("url"),
             filename: row.get("filename"),
             hash: row.get("hash_int"),
@@ -100,7 +101,8 @@ pub fn extract_e621_rows<'a>(
         let dbbytes = dbhash.to_be_bytes();
 
         File {
-            id: row.get("id"),
+            id: row.get::<&str, i32>("id") as i64,
+            id_str: row.get::<&str, i32>("id").to_string(),
             url: row.get("url"),
             hash: Some(dbhash),
             distance: hash
@@ -112,6 +114,40 @@ pub fn extract_e621_rows<'a>(
             })),
             artists: row.get("artists"),
             filename: row.get("filename"),
+        }
+    })
+}
+
+pub fn extract_twitter_rows<'a>(
+    rows: Vec<tokio_postgres::Row>,
+    hash: Option<&'a [u8]>,
+) -> impl IntoIterator<Item = File> + 'a {
+    rows.into_iter().map(move |row| {
+        let dbhash: i64 = row.get("hash");
+        let dbbytes = dbhash.to_be_bytes();
+
+        let url: String = row.get("url");
+
+        let filename = url
+            .split('/')
+            .last()
+            .unwrap()
+            .split(':')
+            .next()
+            .unwrap()
+            .to_string();
+
+        File {
+            id: row.get("id"),
+            id_str: row.get::<&str, i64>("id").to_string(),
+            url,
+            hash: Some(dbhash),
+            distance: hash
+                .map(|hash| hamming::distance_fast(&dbbytes, &hash).ok())
+                .flatten(),
+            site_info: Some(SiteInfo::Twitter),
+            artists: row.get("artists"),
+            filename,
         }
     })
 }

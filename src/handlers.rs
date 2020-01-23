@@ -1,6 +1,6 @@
 use crate::models::image_query;
 use crate::types::*;
-use crate::utils::{extract_e621_rows, extract_fa_rows};
+use crate::utils::{extract_e621_rows, extract_fa_rows, extract_twitter_rows};
 use crate::{rate_limit, Pool};
 use log::{debug, info};
 use warp::{reject, Rejection, Reply};
@@ -79,25 +79,27 @@ pub async fn search_image(
 
     debug!("Matching hash {}", num);
 
-    let (fa_results, e621_results) = {
+    let results = {
         if opts.search_type == Some(ImageSearchType::Force) {
             image_query(&db, vec![num], 10).await.unwrap()
         } else {
-            let (fa_results, e621_results) = image_query(&db, vec![num], 0).await.unwrap();
-            if fa_results.len() + e621_results.len() == 0
-                && opts.search_type != Some(ImageSearchType::Exact)
-            {
+            let results = image_query(&db, vec![num], 0).await.unwrap();
+            if results.is_empty() && opts.search_type != Some(ImageSearchType::Exact) {
                 image_query(&db, vec![num], 10).await.unwrap()
             } else {
-                (fa_results, e621_results)
+                results
             }
         }
     };
 
-    let mut items = Vec::with_capacity(fa_results.len() + e621_results.len());
+    let mut items = Vec::with_capacity(results.len());
 
-    items.extend(extract_fa_rows(fa_results, Some(&hash.as_bytes())));
-    items.extend(extract_e621_rows(e621_results, Some(&hash.as_bytes())));
+    items.extend(extract_fa_rows(results.furaffinity, Some(&hash.as_bytes())));
+    items.extend(extract_e621_rows(results.e621, Some(&hash.as_bytes())));
+    items.extend(extract_twitter_rows(
+        results.twitter,
+        Some(&hash.as_bytes()),
+    ));
 
     items.sort_by(|a, b| {
         a.distance
@@ -124,6 +126,7 @@ pub async fn search_hashes(
     let hashes: Vec<i64> = opts
         .hashes
         .split(',')
+        .take(10)
         .filter_map(|hash| hash.parse::<i64>().ok())
         .collect();
 
@@ -133,13 +136,14 @@ pub async fn search_hashes(
 
     rate_limit!(&api_key, &db, image_limit, "image", hashes.len() as i16);
 
-    let (fa_matches, e621_matches) = image_query(&db, hashes, 10)
+    let results = image_query(&db, hashes, 10)
         .await
         .map_err(|err| reject::custom(Error::from(err)))?;
 
-    let mut matches = Vec::with_capacity(fa_matches.len() + e621_matches.len());
-    matches.extend(extract_fa_rows(fa_matches, None));
-    matches.extend(extract_e621_rows(e621_matches, None));
+    let mut matches = Vec::with_capacity(results.len());
+    matches.extend(extract_fa_rows(results.furaffinity, None));
+    matches.extend(extract_e621_rows(results.e621, None));
+    matches.extend(extract_twitter_rows(results.twitter, None));
 
     Ok(warp::reply::json(&matches))
 }
@@ -190,6 +194,7 @@ pub async fn search_file(
         .into_iter()
         .map(|row| File {
             id: row.get("id"),
+            id_str: row.get::<&str, i32>("id").to_string(),
             url: row.get("url"),
             filename: row.get("filename"),
             artists: row
