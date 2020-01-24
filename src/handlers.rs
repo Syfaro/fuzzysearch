@@ -251,7 +251,7 @@ pub async fn search_file(
         .map_err(map_postgres_err)?
         .into_iter()
         .map(|row| File {
-            id: row.get("id"),
+            id: row.get::<&str, i32>("id") as i64,
             id_str: row.get::<&str, i32>("id").to_string(),
             url: row.get("url"),
             filename: row.get("filename"),
