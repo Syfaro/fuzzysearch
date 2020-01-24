@@ -1,6 +1,5 @@
-use crate::models::image_query;
+use crate::models::{image_query, image_query_sync};
 use crate::types::*;
-use crate::utils::{extract_e621_rows, extract_fa_rows, extract_twitter_rows};
 use crate::{rate_limit, Pool};
 use log::{debug, info};
 use warp::{reject, Rejection, Reply};
@@ -39,10 +38,10 @@ impl warp::reject::Reject for Error {}
 pub async fn search_image(
     form: warp::multipart::FormData,
     opts: ImageSearchOpts,
-    db: Pool,
+    pool: Pool,
     api_key: String,
 ) -> Result<impl Reply, Rejection> {
-    let db = db.get().await.map_err(map_bb8_err)?;
+    let db = pool.get().await.map_err(map_bb8_err)?;
 
     rate_limit!(&api_key, &db, image_limit, "image");
 
@@ -79,27 +78,24 @@ pub async fn search_image(
 
     debug!("Matching hash {}", num);
 
-    let results = {
+    let mut items = {
         if opts.search_type == Some(ImageSearchType::Force) {
-            image_query(&db, vec![num], 10).await.unwrap()
+            image_query(pool.clone(), vec![num], 10, Some(hash.as_bytes().to_vec()))
+                .await
+                .unwrap()
         } else {
-            let results = image_query(&db, vec![num], 0).await.unwrap();
+            let results = image_query(pool.clone(), vec![num], 0, Some(hash.as_bytes().to_vec()))
+                .await
+                .unwrap();
             if results.is_empty() && opts.search_type != Some(ImageSearchType::Exact) {
-                image_query(&db, vec![num], 10).await.unwrap()
+                image_query(pool.clone(), vec![num], 10, Some(hash.as_bytes().to_vec()))
+                    .await
+                    .unwrap()
             } else {
                 results
             }
         }
     };
-
-    let mut items = Vec::with_capacity(results.len());
-
-    items.extend(extract_fa_rows(results.furaffinity, Some(&hash.as_bytes())));
-    items.extend(extract_e621_rows(results.e621, Some(&hash.as_bytes())));
-    items.extend(extract_twitter_rows(
-        results.twitter,
-        Some(&hash.as_bytes()),
-    ));
 
     items.sort_by(|a, b| {
         a.distance
@@ -116,11 +112,75 @@ pub async fn search_image(
     Ok(warp::reply::json(&similarity))
 }
 
+pub async fn stream_image(
+    form: warp::multipart::FormData,
+    pool: Pool,
+    api_key: String,
+) -> Result<impl Reply, Rejection> {
+    let db = pool.get().await.map_err(map_bb8_err)?;
+
+    rate_limit!(&api_key, &db, image_limit, "image", 2);
+
+    use bytes::BufMut;
+    use futures_util::StreamExt;
+    let parts: Vec<_> = form.collect().await;
+    let mut parts = parts
+        .into_iter()
+        .map(|part| {
+            let part = part.unwrap();
+            (part.name().to_string(), part)
+        })
+        .collect::<std::collections::HashMap<_, _>>();
+    let image = parts.remove("image").unwrap();
+
+    let bytes = image
+        .stream()
+        .fold(bytes::BytesMut::new(), |mut b, data| {
+            b.put(data.unwrap());
+            async move { b }
+        })
+        .await;
+
+    let hash = {
+        let hasher = crate::get_hasher();
+        let image = image::load_from_memory(&bytes).unwrap();
+        hasher.hash_image(&image)
+    };
+
+    let mut buf: [u8; 8] = [0; 8];
+    buf.copy_from_slice(&hash.as_bytes());
+
+    let num = i64::from_be_bytes(buf);
+
+    debug!("Stream matching hash {}", num);
+
+    let exact_event_stream =
+        image_query_sync(pool.clone(), vec![num], 0, Some(hash.as_bytes().to_vec()))
+            .map(sse_matches);
+
+    let close_event_stream =
+        image_query_sync(pool.clone(), vec![num], 10, Some(hash.as_bytes().to_vec()))
+            .map(sse_matches);
+
+    let event_stream = futures::stream::select(exact_event_stream, close_event_stream);
+
+    Ok(warp::sse::reply(event_stream))
+}
+
+fn sse_matches(
+    matches: Result<Vec<File>, tokio_postgres::Error>,
+) -> Result<impl warp::sse::ServerSentEvent, core::convert::Infallible> {
+    let items = matches.unwrap();
+
+    Ok(warp::sse::json(items))
+}
+
 pub async fn search_hashes(
     opts: HashSearchOpts,
     db: Pool,
     api_key: String,
 ) -> Result<impl Reply, Rejection> {
+    let pool = db.clone();
     let db = db.get().await.map_err(map_bb8_err)?;
 
     let hashes: Vec<i64> = opts
@@ -136,14 +196,12 @@ pub async fn search_hashes(
 
     rate_limit!(&api_key, &db, image_limit, "image", hashes.len() as i16);
 
-    let results = image_query(&db, hashes, 10)
-        .await
-        .map_err(|err| reject::custom(Error::from(err)))?;
+    let mut results = image_query_sync(pool, hashes.clone(), 10, None);
+    let mut matches = Vec::new();
 
-    let mut matches = Vec::with_capacity(results.len());
-    matches.extend(extract_fa_rows(results.furaffinity, None));
-    matches.extend(extract_e621_rows(results.e621, None));
-    matches.extend(extract_twitter_rows(results.twitter, None));
+    while let Some(r) = results.recv().await {
+        matches.extend(r.map_err(|e| warp::reject::custom(Error::Postgres(e)))?);
+    }
 
     Ok(warp::reply::json(&matches))
 }
