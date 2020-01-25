@@ -26,7 +26,10 @@ pub enum RateLimit {
 #[derive(Debug, Default, Serialize)]
 pub struct File {
     pub id: i64,
-    pub id_str: String,
+
+    pub site_id: i64,
+    pub site_id_str: String,
+
     pub url: String,
     pub filename: String,
     pub artists: Option<Vec<String>>,
@@ -59,7 +62,6 @@ pub struct FurAffinityFile {
 /// Information about a file hosted on e621.
 #[derive(Debug, Serialize)]
 pub struct E621File {
-    pub file_md5: String,
     pub sources: Option<Vec<String>>,
 }
 

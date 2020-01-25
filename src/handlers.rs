@@ -206,68 +206,68 @@ pub async fn search_hashes(
     Ok(warp::reply::json(&matches))
 }
 
-pub async fn search_file(
-    opts: FileSearchOpts,
-    db: Pool,
-    api_key: String,
-) -> Result<impl Reply, Rejection> {
-    let db = db.get().await.map_err(map_bb8_err)?;
+// pub async fn search_file(
+//     opts: FileSearchOpts,
+//     db: Pool,
+//     api_key: String,
+// ) -> Result<impl Reply, Rejection> {
+//     let db = db.get().await.map_err(map_bb8_err)?;
 
-    rate_limit!(&api_key, &db, name_limit, "file");
+//     rate_limit!(&api_key, &db, name_limit, "file");
 
-    let (filter, val): (&'static str, &(dyn tokio_postgres::types::ToSql + Sync)) =
-        if let Some(ref id) = opts.id {
-            ("file_id = $1", id)
-        } else if let Some(ref name) = opts.name {
-            ("lower(filename) = lower($1)", name)
-        } else if let Some(ref url) = opts.url {
-            ("lower(url) = lower($1)", url)
-        } else {
-            return Err(warp::reject::custom(Error::InvalidData));
-        };
+//     let (filter, val): (&'static str, &(dyn tokio_postgres::types::ToSql + Sync)) =
+//         if let Some(ref id) = opts.id {
+//             ("file_id = $1", id)
+//         } else if let Some(ref name) = opts.name {
+//             ("lower(filename) = lower($1)", name)
+//         } else if let Some(ref url) = opts.url {
+//             ("lower(url) = lower($1)", url)
+//         } else {
+//             return Err(warp::reject::custom(Error::InvalidData));
+//         };
 
-    debug!("Searching for {:?}", opts);
+//     debug!("Searching for {:?}", opts);
 
-    let query = format!(
-        "SELECT
-            submission.id,
-            submission.url,
-            submission.filename,
-            submission.file_id,
-            artist.name
-        FROM
-            submission
-        JOIN artist
-            ON artist.id = submission.artist_id
-        WHERE
-            {}
-        LIMIT 10",
-        filter
-    );
+//     let query = format!(
+//         "SELECT
+//             submission.id,
+//             submission.url,
+//             submission.filename,
+//             submission.file_id,
+//             artist.name
+//         FROM
+//             submission
+//         JOIN artist
+//             ON artist.id = submission.artist_id
+//         WHERE
+//             {}
+//         LIMIT 10",
+//         filter
+//     );
 
-    let matches: Vec<_> = db
-        .query::<str>(&*query, &[val])
-        .await
-        .map_err(map_postgres_err)?
-        .into_iter()
-        .map(|row| File {
-            id: row.get::<&str, i32>("id") as i64,
-            id_str: row.get::<&str, i32>("id").to_string(),
-            url: row.get("url"),
-            filename: row.get("filename"),
-            artists: row
-                .get::<&str, Option<String>>("name")
-                .map(|artist| vec![artist]),
-            distance: None,
-            hash: None,
-            site_info: Some(SiteInfo::FurAffinity(FurAffinityFile {
-                file_id: row.get("file_id"),
-            })),
-        })
-        .collect();
+//     let matches: Vec<_> = db
+//         .query::<str>(&*query, &[val])
+//         .await
+//         .map_err(map_postgres_err)?
+//         .into_iter()
+//         .map(|row| File {
+//             id: row.get::<&str, i32>("id") as i64,
+//             id_str: row.get::<&str, i32>("id").to_string(),
+//             url: row.get("url"),
+//             filename: row.get("filename"),
+//             artists: row
+//                 .get::<&str, Option<String>>("name")
+//                 .map(|artist| vec![artist]),
+//             distance: None,
+//             hash: None,
+//             site_info: Some(SiteInfo::FurAffinity(FurAffinityFile {
+//                 file_id: row.get("file_id"),
+//             })),
+//         })
+//         .collect();
 
-    Ok(warp::reply::json(&matches))
-}
+//     Ok(warp::reply::json(&matches))
+// }
 
 pub async fn handle_rejection(err: Rejection) -> Result<impl Reply, std::convert::Infallible> {
     info!("Had rejection: {:?}", err);
