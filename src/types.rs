@@ -25,7 +25,7 @@ pub enum RateLimit {
 /// A general type for every file.
 #[derive(Debug, Default, Serialize)]
 pub struct File {
-    pub id: i64,
+    pub id: i32,
 
     pub site_id: i64,
     pub site_id_str: String,

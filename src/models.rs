@@ -59,6 +59,12 @@ pub fn image_query_sync(
     distance: i64,
     hash: Option<Vec<u8>>,
 ) -> tokio::sync::mpsc::Receiver<Result<Vec<File>, tokio_postgres::Error>> {
+    log::trace!(
+        "Running image query on {} hashes with distance {}",
+        hashes.len(),
+        distance
+    );
+
     let (mut tx, rx) = tokio::sync::mpsc::channel(1);
 
     tokio::spawn(async move {
@@ -71,7 +77,7 @@ pub fn image_query_sync(
         let mut hash_where_clause = Vec::with_capacity(hashes.len());
         for (idx, hash) in hashes.iter().enumerate() {
             params.push(hash);
-            hash_where_clause.push(format!(" hash <@ (${}, $1)", idx + 2));
+            hash_where_clause.push(format!(" hashes.hash <@ (${}, $1)", idx + 2));
         }
         let hash_where_clause = hash_where_clause.join(" OR ");
 

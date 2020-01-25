@@ -7,17 +7,17 @@ pub fn search(db: Pool) -> impl Filter<Extract = impl Reply, Error = Rejection> 
     search_image(db.clone())
         .or(search_hashes(db.clone()))
         .or(stream_search_image(db.clone()))
-        // .or(search_file(db))
+        .or(search_file(db))
 }
 
-// pub fn search_file(db: Pool) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
-//     warp::path("file")
-//         .and(warp::get())
-//         .and(warp::query::<FileSearchOpts>())
-//         .and(with_pool(db))
-//         .and(with_api_key())
-//         .and_then(handlers::search_file)
-// }
+pub fn search_file(db: Pool) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
+    warp::path("file")
+        .and(warp::get())
+        .and(warp::query::<FileSearchOpts>())
+        .and(with_pool(db))
+        .and(with_api_key())
+        .and_then(handlers::search_file)
+}
 
 pub fn search_image(db: Pool) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
     warp::path("image")
