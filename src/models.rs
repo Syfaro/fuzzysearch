@@ -132,7 +132,8 @@ pub fn image_query_sync(
             FROM tweet_media
             WHERE
                 tweet_media.tweet_id = hashes.twitter_id AND
-                tweet_media.hash = hashes.hash
+                tweet_media.hash <@ (hashes.hash, 0)
+            LIMIT 1
         ) tm ON hashes.twitter_id IS NOT NULL
         WHERE {}", hash_where_clause);
 
