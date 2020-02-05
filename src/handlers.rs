@@ -1,7 +1,8 @@
 use crate::models::{image_query, image_query_sync};
 use crate::types::*;
 use crate::{rate_limit, Pool};
-use log::{debug, info};
+use tracing::{span, warn};
+use tracing_futures::Instrument;
 use warp::{reject, Rejection, Reply};
 
 fn map_bb8_err(err: bb8::RunError<tokio_postgres::Error>) -> Rejection {
@@ -35,18 +36,11 @@ impl From<tokio_postgres::Error> for Error {
 
 impl warp::reject::Reject for Error {}
 
-pub async fn search_image(
-    form: warp::multipart::FormData,
-    opts: ImageSearchOpts,
-    pool: Pool,
-    api_key: String,
-) -> Result<impl Reply, Rejection> {
-    let db = pool.get().await.map_err(map_bb8_err)?;
-
-    rate_limit!(&api_key, &db, image_limit, "image");
-
+#[tracing::instrument(skip(form))]
+async fn hash_input(form: warp::multipart::FormData) -> (i64, img_hash::ImageHash<[u8; 8]>) {
     use bytes::BufMut;
     use futures_util::StreamExt;
+
     let parts: Vec<_> = form.collect().await;
     let mut parts = parts
         .into_iter()
@@ -65,18 +59,35 @@ pub async fn search_image(
         })
         .await;
 
-    let hash = {
+    let len = bytes.len();
+
+    let hash = tokio::task::spawn_blocking(move || {
         let hasher = crate::get_hasher();
         let image = image::load_from_memory(&bytes).unwrap();
         hasher.hash_image(&image)
-    };
+    })
+    .instrument(span!(tracing::Level::TRACE, "hashing image", len))
+    .await
+    .unwrap();
 
     let mut buf: [u8; 8] = [0; 8];
     buf.copy_from_slice(&hash.as_bytes());
 
-    let num = i64::from_be_bytes(buf);
+    (i64::from_be_bytes(buf), hash)
+}
 
-    debug!("Matching hash {}", num);
+#[tracing::instrument(skip(form, pool, api_key))]
+pub async fn search_image(
+    form: warp::multipart::FormData,
+    opts: ImageSearchOpts,
+    pool: Pool,
+    api_key: String,
+) -> Result<impl Reply, Rejection> {
+    let db = pool.get().await.map_err(map_bb8_err)?;
+
+    rate_limit!(&api_key, &db, image_limit, "image");
+
+    let (num, hash) = hash_input(form).await;
 
     let mut items = {
         if opts.search_type == Some(ImageSearchType::Force) {
@@ -112,47 +123,19 @@ pub async fn search_image(
     Ok(warp::reply::json(&similarity))
 }
 
+#[tracing::instrument(skip(form, pool, api_key))]
 pub async fn stream_image(
     form: warp::multipart::FormData,
     pool: Pool,
     api_key: String,
 ) -> Result<impl Reply, Rejection> {
+    use futures_util::StreamExt;
+
     let db = pool.get().await.map_err(map_bb8_err)?;
 
     rate_limit!(&api_key, &db, image_limit, "image", 2);
 
-    use bytes::BufMut;
-    use futures_util::StreamExt;
-    let parts: Vec<_> = form.collect().await;
-    let mut parts = parts
-        .into_iter()
-        .map(|part| {
-            let part = part.unwrap();
-            (part.name().to_string(), part)
-        })
-        .collect::<std::collections::HashMap<_, _>>();
-    let image = parts.remove("image").unwrap();
-
-    let bytes = image
-        .stream()
-        .fold(bytes::BytesMut::new(), |mut b, data| {
-            b.put(data.unwrap());
-            async move { b }
-        })
-        .await;
-
-    let hash = {
-        let hasher = crate::get_hasher();
-        let image = image::load_from_memory(&bytes).unwrap();
-        hasher.hash_image(&image)
-    };
-
-    let mut buf: [u8; 8] = [0; 8];
-    buf.copy_from_slice(&hash.as_bytes());
-
-    let num = i64::from_be_bytes(buf);
-
-    debug!("Stream matching hash {}", num);
+    let (num, hash) = hash_input(form).await;
 
     let exact_event_stream =
         image_query_sync(pool.clone(), vec![num], 0, Some(hash.as_bytes().to_vec()))
@@ -175,6 +158,7 @@ fn sse_matches(
     Ok(warp::sse::json(items))
 }
 
+#[tracing::instrument(skip(form, db, api_key))]
 pub async fn search_hashes(
     opts: HashSearchOpts,
     db: Pool,
@@ -206,6 +190,7 @@ pub async fn search_hashes(
     Ok(warp::reply::json(&matches))
 }
 
+#[tracing::instrument(skip(db, api_key))]
 pub async fn search_file(
     opts: FileSearchOpts,
     db: Pool,
@@ -225,8 +210,6 @@ pub async fn search_file(
         } else {
             return Err(warp::reject::custom(Error::InvalidData));
         };
-
-    debug!("Searching for {:?}", opts);
 
     let query = format!(
         "SELECT
@@ -250,6 +233,7 @@ pub async fn search_file(
 
     let matches: Vec<_> = db
         .query::<str>(&*query, &[val])
+        .instrument(span!(tracing::Level::TRACE, "waiting for db"))
         .await
         .map_err(map_postgres_err)?
         .into_iter()
@@ -273,8 +257,9 @@ pub async fn search_file(
     Ok(warp::reply::json(&matches))
 }
 
+#[tracing::instrument]
 pub async fn handle_rejection(err: Rejection) -> Result<impl Reply, std::convert::Infallible> {
-    info!("Had rejection: {:?}", err);
+    warn!("had rejection");
 
     let (code, message) = if err.is_not_found() {
         (

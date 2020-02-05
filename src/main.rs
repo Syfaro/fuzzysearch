@@ -10,9 +10,57 @@ mod utils;
 
 use warp::Filter;
 
+fn configure_tracing() {
+    use opentelemetry::{
+        api::{KeyValue, Provider, Sampler},
+        exporter::trace::jaeger,
+        sdk::Config,
+    };
+    use tracing_subscriber::layer::SubscriberExt;
+
+    let env = if cfg!(debug_assertions) {
+        "debug"
+    } else {
+        "release"
+    };
+
+    let exporter = jaeger::Exporter::builder()
+        .with_collector_endpoint(std::env::var("JAEGER_COLLECTOR").unwrap().parse().unwrap())
+        .with_process(jaeger::Process {
+            service_name: "fuzzysearch",
+            tags: vec![
+                KeyValue::new("environment", env),
+                KeyValue::new("version", env!("CARGO_PKG_VERSION")),
+            ],
+        })
+        .init();
+
+    let provider = opentelemetry::sdk::Provider::builder()
+        .with_exporter(exporter)
+        .with_config(Config {
+            default_sampler: Sampler::Always,
+            ..Default::default()
+        })
+        .build();
+
+    let tracer = provider.get_tracer("api");
+
+    let telem_layer = tracing_opentelemetry::OpentelemetryLayer::with_tracer(tracer);
+    let fmt_layer = tracing_subscriber::fmt::Layer::default();
+
+    let subscriber = tracing_subscriber::Registry::default()
+        .with(telem_layer)
+        .with(fmt_layer);
+
+    tracing::subscriber::set_global_default(subscriber)
+        .expect("Unable to set default tracing subscriber");
+}
+
 #[tokio::main]
 async fn main() {
     pretty_env_logger::init();
+
+    configure_tracing();
 
     let s = std::env::var("POSTGRES_DSN").expect("Missing POSTGRES_DSN");
 

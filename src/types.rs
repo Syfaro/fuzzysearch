@@ -98,7 +98,7 @@ pub struct ErrorMessage {
     pub message: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct HashSearchOpts {
     pub hashes: String,
 }

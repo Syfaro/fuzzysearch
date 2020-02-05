@@ -1,10 +1,12 @@
 use crate::types::*;
 use crate::utils::extract_rows;
 use crate::Pool;
+use tracing_futures::Instrument;
 
 pub type DB<'a> =
     &'a bb8::PooledConnection<'a, bb8_postgres::PostgresConnectionManager<tokio_postgres::NoTls>>;
 
+#[tracing::instrument(skip(db))]
 pub async fn lookup_api_key(key: &str, db: DB<'_>) -> Option<ApiKey> {
     let rows = db
         .query(
@@ -37,6 +39,7 @@ pub async fn lookup_api_key(key: &str, db: DB<'_>) -> Option<ApiKey> {
     }
 }
 
+#[tracing::instrument(skip(pool))]
 pub async fn image_query(
     pool: Pool,
     hashes: Vec<i64>,
@@ -53,18 +56,13 @@ pub async fn image_query(
     Ok(matches)
 }
 
+#[tracing::instrument(skip(pool))]
 pub fn image_query_sync(
     pool: Pool,
     hashes: Vec<i64>,
     distance: i64,
     hash: Option<Vec<u8>>,
 ) -> tokio::sync::mpsc::Receiver<Result<Vec<File>, tokio_postgres::Error>> {
-    log::trace!(
-        "Running image query on {} hashes with distance {}",
-        hashes.len(),
-        distance
-    );
-
     let (mut tx, rx) = tokio::sync::mpsc::channel(1);
 
     tokio::spawn(async move {
@@ -140,7 +138,7 @@ pub fn image_query_sync(
         let query = db.query::<str>(&*hash_query, &params).await;
         let rows = query.map(|rows| extract_rows(rows, hash.as_deref()).into_iter().collect());
         tx.send(rows).await.unwrap();
-    });
+    }.in_current_span());
 
     rx
 }

@@ -1,6 +1,5 @@
 use crate::models::DB;
 use crate::types::*;
-use log::debug;
 
 #[macro_export]
 macro_rules! rate_limit {
@@ -30,6 +29,7 @@ macro_rules! rate_limit {
 /// the specified group, the name of the group we're incrementing, and the
 /// amount to increment for this request. This should remain as 1 except for
 /// joined requests.
+#[tracing::instrument(skip(db))]
 pub async fn update_rate_limit(
     db: DB<'_>,
     key_id: i32,
@@ -40,11 +40,6 @@ pub async fn update_rate_limit(
     let now = chrono::Utc::now();
     let timestamp = now.timestamp();
     let time_window = timestamp - (timestamp % 60);
-
-    debug!(
-        "Incrementing rate limit for: {}-{} by {}",
-        key_id, group_name, incr_by
-    );
 
     let rows = db
         .query(
