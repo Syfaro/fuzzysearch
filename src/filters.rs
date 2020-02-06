@@ -73,7 +73,9 @@ fn with_telem() -> impl Filter<Extract = (crate::Span,), Error = Rejection> + Cl
             let propagator = opentelemetry::api::distributed_context::http_trace_context_propagator::HTTPTraceContextPropagator::new();
             let context = propagator.extract(&headers);
 
-            if context.is_valid() {
+            tracing::trace!("got context from request: {:?}", context);
+
+            let span = if context.is_valid() {
                 let tracer = opentelemetry::global::trace_provider().get_tracer("api");
                 let span = tracer.start("context", Some(context));
                 tracer.mark_span_as_active(&span);
@@ -81,6 +83,8 @@ fn with_telem() -> impl Filter<Extract = (crate::Span,), Error = Rejection> + Cl
                 Some(span)
             } else {
                 None
-            }
+            };
+
+            span
         })
 }
