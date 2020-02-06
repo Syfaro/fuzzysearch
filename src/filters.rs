@@ -12,6 +12,7 @@ pub fn search(db: Pool) -> impl Filter<Extract = impl Reply, Error = Rejection> 
 
 pub fn search_file(db: Pool) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
     warp::path("file")
+        .and(with_telem())
         .and(warp::get())
         .and(warp::query::<FileSearchOpts>())
         .and(with_pool(db))
@@ -21,6 +22,7 @@ pub fn search_file(db: Pool) -> impl Filter<Extract = impl Reply, Error = Reject
 
 pub fn search_image(db: Pool) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
     warp::path("image")
+        .and(with_telem())
         .and(warp::post())
         .and(warp::multipart::form().max_length(1024 * 1024 * 10))
         .and(warp::query::<ImageSearchOpts>())
@@ -31,6 +33,7 @@ pub fn search_image(db: Pool) -> impl Filter<Extract = impl Reply, Error = Rejec
 
 pub fn search_hashes(db: Pool) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
     warp::path("hashes")
+        .and(with_telem())
         .and(warp::get())
         .and(warp::query::<HashSearchOpts>())
         .and(with_pool(db))
@@ -42,6 +45,7 @@ pub fn stream_search_image(
     db: Pool,
 ) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
     warp::path("stream")
+        .and(with_telem())
         .and(warp::post())
         .and(warp::multipart::form().max_length(1024 * 1024 * 10))
         .and(with_pool(db))
@@ -55,4 +59,28 @@ fn with_api_key() -> impl Filter<Extract = (String,), Error = Rejection> + Clone
 
 fn with_pool(db: Pool) -> impl Filter<Extract = (Pool,), Error = Infallible> + Clone {
     warp::any().map(move || db.clone())
+}
+
+fn with_telem() -> impl Filter<Extract = (crate::Span,), Error = Rejection> + Clone {
+    warp::any()
+        .and(warp::header::optional("traceparent"))
+        .map(|traceparent: Option<String>| {
+            use opentelemetry::api::trace::{provider::Provider, tracer::Tracer, propagator::HttpTextFormat};
+
+            let mut headers = std::collections::HashMap::new();
+            headers.insert("Traceparent", traceparent.unwrap_or_else(String::new));
+
+            let propagator = opentelemetry::api::distributed_context::http_trace_context_propagator::HTTPTraceContextPropagator::new();
+            let context = propagator.extract(&headers);
+
+            if context.is_valid() {
+                let tracer = opentelemetry::global::trace_provider().get_tracer("api");
+                let span = tracer.start("context", Some(context));
+                tracer.mark_span_as_active(&span);
+
+                Some(span)
+            } else {
+                None
+            }
+        })
 }

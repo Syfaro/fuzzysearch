@@ -10,6 +10,8 @@ mod utils;
 
 use warp::Filter;
 
+type Span = Option<opentelemetry::global::BoxedSpan>;
+
 fn configure_tracing() {
     use opentelemetry::{
         api::{KeyValue, Provider, Sampler},
@@ -43,7 +45,9 @@ fn configure_tracing() {
         })
         .build();
 
-    let tracer = provider.get_tracer("api");
+    opentelemetry::global::set_provider(provider);
+
+    let tracer = opentelemetry::global::trace_provider().get_tracer("api");
 
     let telem_layer = tracing_opentelemetry::OpentelemetryLayer::with_tracer(tracer);
     let fmt_layer = tracing_subscriber::fmt::Layer::default();

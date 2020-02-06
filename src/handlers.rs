@@ -76,8 +76,9 @@ async fn hash_input(form: warp::multipart::FormData) -> (i64, img_hash::ImageHas
     (i64::from_be_bytes(buf), hash)
 }
 
-#[tracing::instrument(skip(form, pool, api_key))]
+#[tracing::instrument(skip(_telem, form, pool, api_key))]
 pub async fn search_image(
+    _telem: crate::Span,
     form: warp::multipart::FormData,
     opts: ImageSearchOpts,
     pool: Pool,
@@ -123,8 +124,9 @@ pub async fn search_image(
     Ok(warp::reply::json(&similarity))
 }
 
-#[tracing::instrument(skip(form, pool, api_key))]
+#[tracing::instrument(skip(_telem, form, pool, api_key))]
 pub async fn stream_image(
+    _telem: crate::Span,
     form: warp::multipart::FormData,
     pool: Pool,
     api_key: String,
@@ -158,8 +160,9 @@ fn sse_matches(
     Ok(warp::sse::json(items))
 }
 
-#[tracing::instrument(skip(form, db, api_key))]
+#[tracing::instrument(skip(_telem, form, db, api_key))]
 pub async fn search_hashes(
+    _telem: crate::Span,
     opts: HashSearchOpts,
     db: Pool,
     api_key: String,
@@ -190,8 +193,9 @@ pub async fn search_hashes(
     Ok(warp::reply::json(&matches))
 }
 
-#[tracing::instrument(skip(db, api_key))]
+#[tracing::instrument(skip(_telem, db, api_key))]
 pub async fn search_file(
+    _telem: crate::Span,
     opts: FileSearchOpts,
     db: Pool,
     api_key: String,
