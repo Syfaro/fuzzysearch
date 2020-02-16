@@ -132,6 +132,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf1de2fe8c75bc145a2f577add951f8134889b4795d47466a54a5c846d691693"
 
 [[package]]
+name = "bk-tree"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5488039ea2c6de8668351415e39a0218a8955bffadcff0cf01d1293a20854584"
+
+[[package]]
 name = "block-buffer"
 version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -501,6 +507,7 @@ version = "0.1.0"
 dependencies = [
  "bb8",
  "bb8-postgres",
+ "bk-tree",
  "bytes 0.5.4",
  "chrono",
  "futures",

@@ -1,6 +1,6 @@
 use crate::models::{image_query, image_query_sync};
 use crate::types::*;
-use crate::{rate_limit, Pool};
+use crate::{rate_limit, Pool, Tree};
 use tracing::{span, warn};
 use tracing_futures::Instrument;
 use warp::{reject, Rejection, Reply};
@@ -76,12 +76,13 @@ async fn hash_input(form: warp::multipart::FormData) -> (i64, img_hash::ImageHas
     (i64::from_be_bytes(buf), hash)
 }
 
-#[tracing::instrument(skip(_telem, form, pool, api_key))]
+#[tracing::instrument(skip(_telem, form, pool, tree, api_key))]
 pub async fn search_image(
     _telem: crate::Span,
     form: warp::multipart::FormData,
     opts: ImageSearchOpts,
     pool: Pool,
+    tree: Tree,
     api_key: String,
 ) -> Result<impl Reply, Rejection> {
     let db = pool.get().await.map_err(map_bb8_err)?;
@@ -92,17 +93,35 @@ pub async fn search_image(
 
     let mut items = {
         if opts.search_type == Some(ImageSearchType::Force) {
-            image_query(pool.clone(), vec![num], 10, Some(hash.as_bytes().to_vec()))
+            image_query(
+                pool.clone(),
+                tree.clone(),
+                vec![num],
+                10,
+                Some(hash.as_bytes().to_vec()),
+            )
+            .await
+            .unwrap()
+        } else {
+            let results = image_query(
+                pool.clone(),
+                tree.clone(),
+                vec![num],
+                0,
+                Some(hash.as_bytes().to_vec()),
+            )
+            .await
+            .unwrap();
+            if results.is_empty() && opts.search_type != Some(ImageSearchType::Exact) {
+                image_query(
+                    pool.clone(),
+                    tree.clone(),
+                    vec![num],
+                    10,
+                    Some(hash.as_bytes().to_vec()),
+                )
                 .await
                 .unwrap()
-        } else {
-            let results = image_query(pool.clone(), vec![num], 0, Some(hash.as_bytes().to_vec()))
-                .await
-                .unwrap();
-            if results.is_empty() && opts.search_type != Some(ImageSearchType::Exact) {
-                image_query(pool.clone(), vec![num], 10, Some(hash.as_bytes().to_vec()))
-                    .await
-                    .unwrap()
             } else {
                 results
             }
@@ -124,11 +143,12 @@ pub async fn search_image(
     Ok(warp::reply::json(&similarity))
 }
 
-#[tracing::instrument(skip(_telem, form, pool, api_key))]
+#[tracing::instrument(skip(_telem, form, pool, tree, api_key))]
 pub async fn stream_image(
     _telem: crate::Span,
     form: warp::multipart::FormData,
     pool: Pool,
+    tree: Tree,
     api_key: String,
 ) -> Result<impl Reply, Rejection> {
     use futures_util::StreamExt;
@@ -139,15 +159,14 @@ pub async fn stream_image(
 
     let (num, hash) = hash_input(form).await;
 
-    let exact_event_stream =
-        image_query_sync(pool.clone(), vec![num], 0, Some(hash.as_bytes().to_vec()))
-            .map(sse_matches);
-
-    let close_event_stream =
-        image_query_sync(pool.clone(), vec![num], 10, Some(hash.as_bytes().to_vec()))
-            .map(sse_matches);
-
-    let event_stream = futures::stream::select(exact_event_stream, close_event_stream);
+    let event_stream = image_query_sync(
+        pool.clone(),
+        tree,
+        vec![num],
+        10,
+        Some(hash.as_bytes().to_vec()),
+    )
+    .map(sse_matches);
 
     Ok(warp::sse::reply(event_stream))
 }
@@ -160,11 +179,12 @@ fn sse_matches(
     Ok(warp::sse::json(items))
 }
 
-#[tracing::instrument(skip(_telem, form, db, api_key))]
+#[tracing::instrument(skip(_telem, form, db, tree, api_key))]
 pub async fn search_hashes(
     _telem: crate::Span,
     opts: HashSearchOpts,
     db: Pool,
+    tree: Tree,
     api_key: String,
 ) -> Result<impl Reply, Rejection> {
     let pool = db.clone();
@@ -183,7 +203,7 @@ pub async fn search_hashes(
 
     rate_limit!(&api_key, &db, image_limit, "image", hashes.len() as i16);
 
-    let mut results = image_query_sync(pool, hashes.clone(), 10, None);
+    let mut results = image_query_sync(pool, tree, hashes.clone(), 10, None);
     let mut matches = Vec::new();
 
     while let Some(r) = results.recv().await {

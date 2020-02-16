@@ -1,6 +1,8 @@
 #![recursion_limit = "256"]
 
 use std::str::FromStr;
+use std::sync::Arc;
+use tokio::sync::RwLock;
 
 mod filters;
 mod handlers;
@@ -60,6 +62,28 @@ fn configure_tracing() {
         .expect("Unable to set default tracing subscriber");
 }
 
+#[derive(Debug)]
+pub struct Node {
+    id: i32,
+    hash: [u8; 8],
+}
+
+impl Node {
+    pub fn query(hash: [u8; 8]) -> Self {
+        Self { id: -1, hash }
+    }
+}
+
+type Tree = Arc<RwLock<bk_tree::BKTree<Node, Hamming>>>;
+
+pub struct Hamming;
+
+impl bk_tree::Metric<Node> for Hamming {
+    fn distance(&self, a: &Node, b: &Node) -> u64 {
+        hamming::distance_fast(&a.hash, &b.hash).unwrap()
+    }
+}
+
 #[tokio::main]
 async fn main() {
     pretty_env_logger::init();
@@ -78,6 +102,76 @@ async fn main() {
         .await
         .expect("Unable to build Postgres pool");
 
+    let tree: Tree = Arc::new(RwLock::new(bk_tree::BKTree::new(Hamming)));
+
+    let mut max_id = 0;
+
+    let conn = db_pool.get().await.unwrap();
+    let mut lock = tree.write().await;
+    conn.query("SELECT id, hash FROM hashes", &[])
+        .await
+        .unwrap()
+        .into_iter()
+        .for_each(|row| {
+            let id: i32 = row.get(0);
+            let hash: i64 = row.get(1);
+            let bytes = hash.to_be_bytes();
+
+            if id > max_id {
+                max_id = id;
+            }
+
+            lock.add(Node { id, hash: bytes });
+        });
+    drop(lock);
+    drop(conn);
+
+    let tree_clone = tree.clone();
+    let pool_clone = db_pool.clone();
+    tokio::spawn(async move {
+        use futures_util::StreamExt;
+
+        let max_id = std::sync::atomic::AtomicI32::new(max_id);
+        let tree = tree_clone;
+        let pool = pool_clone;
+
+        let order = std::sync::atomic::Ordering::SeqCst;
+
+        let interval = tokio::time::interval(std::time::Duration::from_secs(30));
+
+        interval
+            .for_each(|_| async {
+                tracing::debug!("Refreshing hashes");
+
+                let conn = pool.get().await.unwrap();
+                let mut lock = tree.write().await;
+                let id = max_id.load(order);
+
+                let mut count = 0;
+
+                conn.query("SELECT id, hash FROM hashes WHERE hashes.id > $1", &[&id])
+                    .await
+                    .unwrap()
+                    .into_iter()
+                    .for_each(|row| {
+                        let id: i32 = row.get(0);
+                        let hash: i64 = row.get(1);
+                        let bytes = hash.to_be_bytes();
+
+                        if id > max_id.load(order) {
+                            max_id.store(id, order);
+                        }
+
+                        lock.add(Node { id, hash: bytes });
+
+                        count += 1;
+                    });
+
+                tracing::trace!("Added {} new hashes", count);
+            })
+            .await;
+    });
+
     let log = warp::log("fuzzysearch");
     let cors = warp::cors()
         .allow_any_origin()
@@ -86,7 +180,7 @@ async fn main() {
 
     let options = warp::options().map(|| "✓");
 
-    let api = options.or(filters::search(db_pool));
+    let api = options.or(filters::search(db_pool, tree));
     let routes = api
         .or(warp::path::end()
             .map(|| warp::redirect(warp::http::Uri::from_static("https://fuzzysearch.net"))))

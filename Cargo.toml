@@ -32,6 +32,8 @@ img_hash = "3"
 image = "0.22"
 hamming = "0.1"
 
+bk-tree = "0.3"
+
 [profile.release]
 lto = true
 codegen-units = 1
