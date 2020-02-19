@@ -130,7 +130,12 @@ pub fn image_query_sync(
                     LIMIT 1
                 ) tm ON hashes.twitter_id IS NOT NULL
                 WHERE hashes.id = $1", &[&item.id]).await;
-                let rows = query.map(|rows| extract_rows(rows, hash.as_deref()).into_iter().collect());
+                let rows = query.map(|rows| {
+                    extract_rows(rows, hash.as_deref()).into_iter().map(|mut file| {
+                        file.searched_hash = Some(query_hash);
+                        file
+                    }).collect()
+                });
                 tx.send(rows).await.unwrap();
             }
         }

@@ -42,6 +42,9 @@ pub struct File {
     pub hash: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub distance: Option<u64>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub searched_hash: Option<i64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -101,4 +104,5 @@ pub struct ErrorMessage {
 #[derive(Debug, Deserialize)]
 pub struct HashSearchOpts {
     pub hashes: String,
+    pub distance: Option<i64>,
 }

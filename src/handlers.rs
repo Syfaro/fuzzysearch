@@ -203,7 +203,13 @@ pub async fn search_hashes(
 
     rate_limit!(&api_key, &db, image_limit, "image", hashes.len() as i16);
 
-    let mut results = image_query_sync(pool, tree, hashes.clone(), 10, None);
+    let mut results = image_query_sync(
+        pool,
+        tree,
+        hashes.clone(),
+        opts.distance.unwrap_or(10),
+        None,
+    );
     let mut matches = Vec::new();
 
     while let Some(r) = results.recv().await {
@@ -275,6 +281,7 @@ pub async fn search_file(
             site_info: Some(SiteInfo::FurAffinity(FurAffinityFile {
                 file_id: row.get("file_id"),
             })),
+            searched_hash: None,
         })
         .collect();
 

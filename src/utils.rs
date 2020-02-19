@@ -109,6 +109,7 @@ pub fn extract_rows<'a>(
                 .flatten(),
             artists: row.get("artists"),
             filename: row.get("filename"),
+            searched_hash: None,
         }
     })
 }
