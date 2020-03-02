@@ -1,9 +1,9 @@
-type Client =
-    r2d2::PooledConnection<r2d2_postgres::PostgresConnectionManager<tokio_postgres::tls::NoTls>>;
+use tokio_postgres::Client;
 
-fn lookup_tag(client: &mut Client, tag: &str) -> i32 {
+async fn lookup_tag(client: &Client, tag: &str) -> i32 {
     if let Some(row) = client
         .query("SELECT id FROM tag WHERE name = $1", &[&tag])
+        .await
         .unwrap()
         .into_iter()
         .next()
@@ -13,6 +13,7 @@ fn lookup_tag(client: &mut Client, tag: &str) -> i32 {
 
     client
         .query("INSERT INTO tag (name) VALUES ($1) RETURNING id", &[&tag])
+        .await
         .unwrap()
         .into_iter()
         .next()
@@ -20,9 +21,10 @@ fn lookup_tag(client: &mut Client, tag: &str) -> i32 {
         .get("id")
 }
 
-fn lookup_artist(client: &mut Client, artist: &str) -> i32 {
+async fn lookup_artist(client: &Client, artist: &str) -> i32 {
     if let Some(row) = client
         .query("SELECT id FROM artist WHERE name = $1", &[&artist])
+        .await
         .unwrap()
         .into_iter()
         .next()
@@ -35,6 +37,7 @@ fn lookup_artist(client: &mut Client, artist: &str) -> i32 {
             "INSERT INTO artist (name) VALUES ($1) RETURNING id",
             &[&artist],
         )
+        .await
         .unwrap()
         .into_iter()
         .next()
@@ -42,54 +45,52 @@ fn lookup_artist(client: &mut Client, artist: &str) -> i32 {
         .get("id")
 }
 
-fn has_submission(client: &mut Client, id: i32) -> bool {
+async fn has_submission(client: &Client, id: i32) -> bool {
     client
         .query("SELECT id FROM submission WHERE id = $1", &[&id])
+        .await
         .expect("unable to run query")
         .into_iter()
         .next()
         .is_some()
 }
 
-fn ids_to_check(client: &mut Client, max: i32) -> Vec<i32> {
-    let min = max - 100;
-
-    let rows = client.query("SELECT sid FROM generate_series(LEAST($1::int, (SELECT MIN(id) FROM SUBMISSION)), $2::int) sid WHERE sid NOT IN (SELECT id FROM submission where id = sid)", &[&min, &max]).unwrap();
+async fn ids_to_check(client: &Client, max: i32) -> Vec<i32> {
+    let rows = client.query("SELECT sid FROM generate_series((SELECT max(id) FROM submission), $1::int) sid WHERE sid NOT IN (SELECT id FROM submission where id = sid)", &[&max]).await.unwrap();
 
     rows.iter().map(|row| row.get("sid")).collect()
 }
 
-fn insert_submission(
-    mut client: &mut Client,
+async fn insert_submission(
+    mut client: &Client,
     sub: &furaffinity_rs::Submission,
 ) -> Result<(), postgres::Error> {
-    let artist_id = lookup_artist(&mut client, &sub.artist);
-    let tag_ids: Vec<i32> = sub
-        .tags
-        .iter()
-        .map(|tag| lookup_tag(&mut client, &tag))
-        .collect();
+    let artist_id = lookup_artist(&mut client, &sub.artist).await;
+    let mut tag_ids = Vec::with_capacity(sub.tags.len());
+    for tag in &sub.tags {
+        tag_ids.push(lookup_tag(&client, &tag).await);
+    }
 
     let hash = sub.hash.clone();
     let url = sub.content.url();
 
     client.execute("INSERT INTO submission (id, artist_id, url, filename, hash, rating, posted_at, description, hash_int, file_id) VALUES ($1, $2, $3, $4, decode($5, 'base64'), $6, $7, $8, $9, CASE WHEN isnumeric(split_part($4, '.', 1)) THEN split_part($4, '.', 1)::int ELSE null END)", &[
         &sub.id, &artist_id, &url, &sub.filename, &hash, &sub.rating.serialize(), &sub.posted_at, &sub.description, &sub.hash_num,
-    ])?;
+    ]).await?;
 
     let stmt = client.prepare(
         "INSERT INTO tag_to_post (tag_id, post_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
-    )?;
+    ).await?;
 
     for tag_id in tag_ids {
-        client.execute(&stmt, &[&tag_id, &sub.id])?;
+        client.execute(&stmt, &[&tag_id, &sub.id]).await?;
     }
 
     Ok(())
 }
 
-fn insert_null_submission(client: &mut Client, id: i32) -> Result<u64, postgres::Error> {
-    client.execute("INSERT INTO SUBMISSION (id) VALUES ($1)", &[&id])
+async fn insert_null_submission(client: &Client, id: i32) -> Result<u64, postgres::Error> {
+    client.execute("INSERT INTO SUBMISSION (id) VALUES ($1)", &[&id]).await
 }
 
 #[tokio::main]
@@ -105,19 +106,23 @@ async fn main() {
 
     let dsn = std::env::var("POSTGRES_DSN").expect("missing postgres dsn");
 
-    let manager =
-        r2d2_postgres::PostgresConnectionManager::new(dsn.parse().unwrap(), postgres::NoTls);
+    let (client, connection) = tokio_postgres::connect(&dsn, tokio_postgres::NoTls).await.unwrap();
 
-    let pool = r2d2::Pool::new(manager).unwrap();
+    tokio::spawn(async move {
+        if let Err(e) = connection.await {
+            panic!(e);
+        }
+    });
+
+    println!("Started");
 
     'main: loop {
-        let mut client = pool.get().unwrap();
-
+        println!("Fetching latest ID");
         let latest_id = fa.latest_id().await.expect("unable to get latest id");
 
-        for id in ids_to_check(&mut client, latest_id) {
+        for id in ids_to_check(&client, latest_id).await {
             'attempt: for attempt in 0..3 {
-                if !has_submission(&mut client, id) {
+                if !has_submission(&client, id).await {
                     println!("loading submission {}", id);
 
                     let sub = match fa.get_submission(id).await {
@@ -139,7 +144,7 @@ async fn main() {
                         Some(sub) => sub,
                         None => {
                             println!("did not exist");
-                            insert_null_submission(&mut client, id).unwrap();
+                            insert_null_submission(&client, id).await.unwrap();
                             break 'attempt;
                         }
                     };
@@ -152,7 +157,7 @@ async fn main() {
                         }
                     };
 
-                    insert_submission(&mut client, &sub).unwrap();
+                    insert_submission(&client, &sub).await.unwrap();
 
                     break 'attempt;
                 }
