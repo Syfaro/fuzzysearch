@@ -179,7 +179,7 @@ fn sse_matches(
     Ok(warp::sse::json(items))
 }
 
-#[tracing::instrument(skip(_telem, form, db, tree, api_key))]
+#[tracing::instrument(skip(_telem, db, tree, api_key))]
 pub async fn search_hashes(
     _telem: crate::Span,
     opts: HashSearchOpts,
