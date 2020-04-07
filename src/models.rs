@@ -84,17 +84,17 @@ pub fn image_query_sync(
                         hashes.twitter_id,
                     CASE
                         WHEN furaffinity_id IS NOT NULL THEN (f.url)
-                        WHEN e621_id IS NOT NULL THEN (e.data->>'file_url')
+                        WHEN e621_id IS NOT NULL THEN (e.data->'file'->>'url')
                         WHEN twitter_id IS NOT NULL THEN (tm.url)
                     END url,
                     CASE
                         WHEN furaffinity_id IS NOT NULL THEN (f.filename)
-                        WHEN e621_id IS NOT NULL THEN ((e.data->>'md5') || '.' || (e.data->>'file_ext'))
+                        WHEN e621_id IS NOT NULL THEN ((e.data->'file'->>'md5') || '.' || (e.data->'file'->>'ext'))
                         WHEN twitter_id IS NOT NULL THEN (SELECT split_part(split_part(tm.url, '/', 5), ':', 1))
                     END filename,
                     CASE
                         WHEN furaffinity_id IS NOT NULL THEN (ARRAY(SELECT f.name))
-                        WHEN e621_id IS NOT NULL THEN ARRAY(SELECT jsonb_array_elements_text(e.data->'artist'))
+                        WHEN e621_id IS NOT NULL THEN ARRAY(SELECT jsonb_array_elements_text(e.data->'tags'->'artist'))
                         WHEN twitter_id IS NOT NULL THEN ARRAY(SELECT tw.data->'user'->>'screen_name')
                     END artists,
                     CASE
