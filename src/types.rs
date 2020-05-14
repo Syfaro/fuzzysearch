@@ -107,3 +107,8 @@ pub struct HashSearchOpts {
     pub hashes: String,
     pub distance: Option<i64>,
 }
+
+#[derive(Debug, Deserialize)]
+pub struct HandleOpts {
+    pub twitter: Option<String>,
+}

@@ -10,7 +10,8 @@ pub fn search(
     search_image(db.clone(), tree.clone())
         .or(search_hashes(db.clone(), tree.clone()))
         .or(stream_search_image(db.clone(), tree))
-        .or(search_file(db))
+        .or(search_file(db.clone()))
+        .or(check_handle(db))
 }
 
 pub fn search_file(db: Pool) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
@@ -64,6 +65,14 @@ pub fn stream_search_image(
         .and(with_tree(tree))
         .and(with_api_key())
         .and_then(handlers::stream_image)
+}
+
+pub fn check_handle(db: Pool) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
+    warp::path("handle")
+        .and(warp::get())
+        .and(warp::query::<HandleOpts>())
+        .and(with_pool(db))
+        .and_then(handlers::check_handle)
 }
 
 fn with_api_key() -> impl Filter<Extract = (String,), Error = Rejection> + Clone {

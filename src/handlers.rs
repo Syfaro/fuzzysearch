@@ -290,6 +290,24 @@ pub async fn search_file(
     Ok(warp::reply::json(&matches))
 }
 
+pub async fn check_handle(opts: HandleOpts, db: Pool) -> Result<impl Reply, Rejection> {
+    let db = db.get().await.map_err(map_bb8_err)?;
+
+    let exists = if let Some(handle) = opts.twitter {
+        !db.query(
+            "SELECT 1 FROM twitter_user WHERE lower(data->>'screen_name') = lower($1)",
+            &[&handle],
+        )
+        .await
+        .map_err(map_postgres_err)?
+        .is_empty()
+    } else {
+        false
+    };
+
+    Ok(warp::reply::json(&exists))
+}
+
 #[tracing::instrument]
 pub async fn handle_rejection(err: Rejection) -> Result<impl Reply, std::convert::Infallible> {
     warn!("had rejection");
