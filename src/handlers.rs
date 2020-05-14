@@ -88,6 +88,7 @@ pub async fn search_image(
     let db = pool.get().await.map_err(map_bb8_err)?;
 
     rate_limit!(&api_key, &db, image_limit, "image");
+    rate_limit!(&api_key, &db, hash_limit, "hash");
 
     let (num, hash) = hash_input(form).await;
 
@@ -156,6 +157,7 @@ pub async fn stream_image(
     let db = pool.get().await.map_err(map_bb8_err)?;
 
     rate_limit!(&api_key, &db, image_limit, "image", 2);
+    rate_limit!(&api_key, &db, hash_limit, "hash");
 
     let (num, hash) = hash_input(form).await;
 

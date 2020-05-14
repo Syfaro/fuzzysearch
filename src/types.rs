@@ -11,6 +11,7 @@ pub struct ApiKey {
     pub owner_email: Option<String>,
     pub name_limit: i16,
     pub image_limit: i16,
+    pub hash_limit: i16,
 }
 
 /// The status of an API key's rate limit.

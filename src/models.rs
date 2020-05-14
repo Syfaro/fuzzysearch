@@ -14,6 +14,7 @@ pub async fn lookup_api_key(key: &str, db: DB<'_>) -> Option<ApiKey> {
             api_key.id,
             api_key.name_limit,
             api_key.image_limit,
+            api_key.hash_limit,
             api_key.name,
             account.email
         FROM
@@ -32,8 +33,9 @@ pub async fn lookup_api_key(key: &str, db: DB<'_>) -> Option<ApiKey> {
             id: row.get(0),
             name_limit: row.get(1),
             image_limit: row.get(2),
-            name: row.get(3),
-            owner_email: row.get(4),
+            hash_limit: row.get(3),
+            name: row.get(4),
+            owner_email: row.get(5),
         }),
         _ => None,
     }
