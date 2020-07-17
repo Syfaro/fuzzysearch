@@ -14,5 +14,5 @@ r2d2 = "0.8"
 chrono = "0.4"
 
 [dependencies.furaffinity-rs]
-git = "https://git.huefox.com/syfaro/furaffinity-rs"
+git = "https://github.com/Syfaro/furaffinity-rs"
 features = ["cloudflare-bypass"]
