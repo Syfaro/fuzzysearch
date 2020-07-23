@@ -12,15 +12,12 @@ mod utils;
 
 use warp::Filter;
 
-type Span = Option<opentelemetry::global::BoxedSpan>;
-
 fn configure_tracing() {
     use opentelemetry::{
-        api::{KeyValue, Provider, Sampler},
-        exporter::trace::jaeger,
-        sdk::Config,
+        api::{KeyValue, Provider},
+        sdk::{Config, Sampler},
     };
-    use tracing_subscriber::layer::SubscriberExt;
+    use tracing_subscriber::{layer::SubscriberExt, prelude::*};
 
     let env = if cfg!(debug_assertions) {
         "debug"
@@ -28,38 +25,44 @@ fn configure_tracing() {
         "release"
     };
 
-    let exporter = jaeger::Exporter::builder()
-        .with_collector_endpoint(std::env::var("JAEGER_COLLECTOR").unwrap().parse().unwrap())
-        .with_process(jaeger::Process {
-            service_name: "fuzzysearch",
+    let fmt_layer = tracing_subscriber::fmt::layer();
+    let filter_layer = tracing_subscriber::EnvFilter::try_from_default_env()
+        .or_else(|_| tracing_subscriber::EnvFilter::try_new("info"))
+        .unwrap();
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .finish();
+    let registry = tracing_subscriber::registry()
+        .with(filter_layer)
+        .with(fmt_layer);
+
+    let exporter = opentelemetry_jaeger::Exporter::builder()
+        .with_agent_endpoint(std::env::var("JAEGER_COLLECTOR").unwrap().parse().unwrap())
+        .with_process(opentelemetry_jaeger::Process {
+            service_name: "fuzzysearch".to_string(),
             tags: vec![
                 KeyValue::new("environment", env),
                 KeyValue::new("version", env!("CARGO_PKG_VERSION")),
             ],
         })
-        .init();
+        .init()
+        .expect("unable to create jaeger exporter");
 
     let provider = opentelemetry::sdk::Provider::builder()
-        .with_exporter(exporter)
+        .with_simple_exporter(exporter)
         .with_config(Config {
-            default_sampler: Sampler::Always,
+            default_sampler: Box::new(Sampler::Always),
             ..Default::default()
         })
         .build();
 
     opentelemetry::global::set_provider(provider);
 
-    let tracer = opentelemetry::global::trace_provider().get_tracer("api");
+    let tracer = opentelemetry::global::trace_provider().get_tracer("fuzzysearch");
+    let telem_layer = tracing_opentelemetry::layer().with_tracer(tracer);
+    let registry = registry.with(telem_layer);
 
-    let telem_layer = tracing_opentelemetry::OpentelemetryLayer::with_tracer(tracer);
-    let fmt_layer = tracing_subscriber::fmt::Layer::default();
-
-    let subscriber = tracing_subscriber::Registry::default()
-        .with(telem_layer)
-        .with(fmt_layer);
-
-    tracing::subscriber::set_global_default(subscriber)
-        .expect("Unable to set default tracing subscriber");
+    registry.init();
 }
 
 #[derive(Debug)]
@@ -86,8 +89,6 @@ impl bk_tree::Metric<Node> for Hamming {
 
 #[tokio::main]
 async fn main() {
-    pretty_env_logger::init();
-
     configure_tracing();
 
     let s = std::env::var("POSTGRES_DSN").expect("Missing POSTGRES_DSN");

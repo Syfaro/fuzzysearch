@@ -1,6 +1,7 @@
 use crate::types::*;
 use crate::{handlers, Pool, Tree};
 use std::convert::Infallible;
+use tracing_futures::Instrument;
 use warp::{Filter, Rejection, Reply};
 
 pub fn search(
@@ -16,12 +17,18 @@ pub fn search(
 
 pub fn search_file(db: Pool) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
     warp::path("file")
-        .and(with_telem())
+        .and(warp::header::optional::<String>("x-b3"))
         .and(warp::get())
         .and(warp::query::<FileSearchOpts>())
         .and(with_pool(db))
         .and(with_api_key())
-        .and_then(handlers::search_file)
+        .and_then(|b3, opts, db, api_key| {
+            use tracing_opentelemetry::OpenTelemetrySpanExt;
+
+            let span = tracing::info_span!("search_file", ?opts);
+            span.set_parent(&with_telem(b3));
+            span.in_scope(|| handlers::search_file(opts, db, api_key).in_current_span())
+        })
 }
 
 pub fn search_image(
@@ -29,14 +36,22 @@ pub fn search_image(
     tree: Tree,
 ) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
     warp::path("image")
-        .and(with_telem())
+        .and(warp::header::optional::<String>("x-b3"))
         .and(warp::post())
         .and(warp::multipart::form().max_length(1024 * 1024 * 10))
         .and(warp::query::<ImageSearchOpts>())
         .and(with_pool(db))
         .and(with_tree(tree))
         .and(with_api_key())
-        .and_then(handlers::search_image)
+        .and_then(|b3, form, opts, pool, tree, api_key| {
+            use tracing_opentelemetry::OpenTelemetrySpanExt;
+
+            let span = tracing::info_span!("search_image", ?opts);
+            span.set_parent(&with_telem(b3));
+            span.in_scope(|| {
+                handlers::search_image(form, opts, pool, tree, api_key).in_current_span()
+            })
+        })
 }
 
 pub fn search_hashes(
@@ -44,13 +59,19 @@ pub fn search_hashes(
     tree: Tree,
 ) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
     warp::path("hashes")
-        .and(with_telem())
+        .and(warp::header::optional::<String>("x-b3"))
         .and(warp::get())
         .and(warp::query::<HashSearchOpts>())
         .and(with_pool(db))
         .and(with_tree(tree))
         .and(with_api_key())
-        .and_then(handlers::search_hashes)
+        .and_then(|b3, opts, db, tree, api_key| {
+            use tracing_opentelemetry::OpenTelemetrySpanExt;
+
+            let span = tracing::info_span!("search_hashes", ?opts);
+            span.set_parent(&with_telem(b3));
+            span.in_scope(|| handlers::search_hashes(opts, db, tree, api_key).in_current_span())
+        })
 }
 
 pub fn stream_search_image(
@@ -58,13 +79,19 @@ pub fn stream_search_image(
     tree: Tree,
 ) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
     warp::path("stream")
-        .and(with_telem())
+        .and(warp::header::optional::<String>("x-b3"))
         .and(warp::post())
         .and(warp::multipart::form().max_length(1024 * 1024 * 10))
         .and(with_pool(db))
         .and(with_tree(tree))
         .and(with_api_key())
-        .and_then(handlers::stream_image)
+        .and_then(|b3, form, pool, tree, api_key| {
+            use tracing_opentelemetry::OpenTelemetrySpanExt;
+
+            let span = tracing::info_span!("stream_search_image");
+            span.set_parent(&with_telem(b3));
+            span.in_scope(|| handlers::stream_image(form, pool, tree, api_key).in_current_span())
+        })
 }
 
 pub fn check_handle(db: Pool) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
@@ -87,28 +114,23 @@ fn with_tree(tree: Tree) -> impl Filter<Extract = (Tree,), Error = Infallible> +
     warp::any().map(move || tree.clone())
 }
 
-fn with_telem() -> impl Filter<Extract = (crate::Span,), Error = Rejection> + Clone {
-    warp::any()
-        .and(warp::header::optional("traceparent"))
-        .map(|traceparent: Option<String>| {
-            use opentelemetry::api::trace::{provider::Provider, tracer::Tracer, propagator::HttpTextFormat};
+fn with_telem(b3: Option<String>) -> opentelemetry::api::context::Context {
+    use opentelemetry::api::{HttpTextFormat, TraceContextExt};
 
-            let mut headers = std::collections::HashMap::new();
-            headers.insert("Traceparent", traceparent.unwrap_or_else(String::new));
+    let mut carrier = std::collections::HashMap::new();
+    if let Some(b3) = b3 {
+        // It took way too long to realize it's a case-sensitive comparison...
+        // Looks like it should be fixed in the next release,
+        // https://github.com/open-telemetry/opentelemetry-rust/pull/148
+        carrier.insert("X-B3".to_string(), b3);
+    }
 
-            let propagator = opentelemetry::api::distributed_context::http_trace_context_propagator::HTTPTraceContextPropagator::new();
-            let context = propagator.extract(&headers);
+    let propagator = opentelemetry::api::B3Propagator::new(true);
+    let parent_context = propagator.extract(&carrier);
+    tracing::trace!(
+        "remote span context: {:?}",
+        parent_context.remote_span_context()
+    );
 
-            tracing::trace!("got context from request: {:?}", context);
-
-            if context.is_valid() {
-                let tracer = opentelemetry::global::trace_provider().get_tracer("api");
-                let span = tracer.start("context", Some(context));
-                tracer.mark_span_as_active(&span);
-
-                Some(span)
-            } else {
-                None
-            }
-        })
+    parent_context
 }
