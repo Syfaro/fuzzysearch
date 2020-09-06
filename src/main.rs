@@ -1,4 +1,13 @@
+use lazy_static::lazy_static;
 use tokio_postgres::Client;
+
+lazy_static! {
+    static ref SUBMISSION_DURATION: prometheus::Histogram = prometheus::register_histogram!(
+        "fuzzysearch_watcher_fa_processing_seconds",
+        "Duration to process a submission"
+    )
+    .unwrap();
+}
 
 async fn lookup_tag(client: &Client, tag: &str) -> i32 {
     if let Some(row) = client
@@ -62,10 +71,10 @@ async fn ids_to_check(client: &Client, max: i32) -> Vec<i32> {
 }
 
 async fn insert_submission(
-    mut client: &Client,
+    client: &Client,
     sub: &furaffinity_rs::Submission,
 ) -> Result<(), postgres::Error> {
-    let artist_id = lookup_artist(&mut client, &sub.artist).await;
+    let artist_id = lookup_artist(&client, &sub.artist).await;
     let mut tag_ids = Vec::with_capacity(sub.tags.len());
     for tag in &sub.tags {
         tag_ids.push(lookup_tag(&client, &tag).await);
@@ -78,9 +87,9 @@ async fn insert_submission(
         &sub.id, &artist_id, &url, &sub.filename, &hash, &sub.rating.serialize(), &sub.posted_at, &sub.description, &sub.hash_num,
     ]).await?;
 
-    let stmt = client.prepare(
-        "INSERT INTO tag_to_post (tag_id, post_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
-    ).await?;
+    let stmt = client
+        .prepare("INSERT INTO tag_to_post (tag_id, post_id) VALUES ($1, $2) ON CONFLICT DO NOTHING")
+        .await?;
 
     for tag_id in tag_ids {
         client.execute(&stmt, &[&tag_id, &sub.id]).await?;
@@ -90,7 +99,49 @@ async fn insert_submission(
 }
 
 async fn insert_null_submission(client: &Client, id: i32) -> Result<u64, postgres::Error> {
-    client.execute("INSERT INTO SUBMISSION (id) VALUES ($1)", &[&id]).await
+    client
+        .execute("INSERT INTO SUBMISSION (id) VALUES ($1)", &[&id])
+        .await
+}
+
+async fn request(
+    req: hyper::Request<hyper::Body>,
+) -> Result<hyper::Response<hyper::Body>, hyper::Error> {
+    match (req.method(), req.uri().path()) {
+        (&hyper::Method::GET, "/health") => Ok(hyper::Response::new(hyper::Body::from("OK"))),
+
+        (&hyper::Method::GET, "/metrics") => {
+            use prometheus::Encoder;
+
+            let encoder = prometheus::TextEncoder::new();
+
+            let metric_families = prometheus::gather();
+            let mut buffer = vec![];
+            encoder.encode(&metric_families, &mut buffer).unwrap();
+
+            Ok(hyper::Response::new(hyper::Body::from(buffer)))
+        }
+
+        _ => {
+            let mut not_found = hyper::Response::default();
+            *not_found.status_mut() = hyper::StatusCode::NOT_FOUND;
+            Ok(not_found)
+        }
+    }
+}
+
+async fn web() {
+    use hyper::service::{make_service_fn, service_fn};
+
+    let addr = ([127, 0, 0, 1], 3000).into();
+
+    let service = make_service_fn(|_| async { Ok::<_, hyper::Error>(service_fn(request)) });
+
+    let server = hyper::Server::bind(&addr).serve(service);
+
+    println!("Listening on http://{}", addr);
+
+    server.await.unwrap();
 }
 
 #[tokio::main]
@@ -106,13 +157,17 @@ async fn main() {
 
     let dsn = std::env::var("POSTGRES_DSN").expect("missing postgres dsn");
 
-    let (client, connection) = tokio_postgres::connect(&dsn, tokio_postgres::NoTls).await.unwrap();
+    let (client, connection) = tokio_postgres::connect(&dsn, tokio_postgres::NoTls)
+        .await
+        .unwrap();
 
     tokio::spawn(async move {
         if let Err(e) = connection.await {
             panic!(e);
         }
     });
+
+    tokio::spawn(async move { web().await });
 
     println!("Started");
 
@@ -125,10 +180,13 @@ async fn main() {
                 if !has_submission(&client, id).await {
                     println!("loading submission {}", id);
 
+                    let timer = SUBMISSION_DURATION.start_timer();
+
                     let sub = match fa.get_submission(id).await {
                         Ok(sub) => sub,
                         Err(e) => {
                             println!("got error: {:?}, retry {}", e.message, e.retry);
+                            timer.stop_and_discard();
                             if e.retry {
                                 tokio::time::delay_for(std::time::Duration::from_secs(attempt + 1))
                                     .await;
@@ -144,6 +202,7 @@ async fn main() {
                         Some(sub) => sub,
                         None => {
                             println!("did not exist");
+                            timer.stop_and_discard();
                             insert_null_submission(&client, id).await.unwrap();
                             break 'attempt;
                         }
@@ -156,6 +215,8 @@ async fn main() {
                             sub
                         }
                     };
+
+                    timer.stop_and_record();
 
                     insert_submission(&client, &sub).await.unwrap();
 

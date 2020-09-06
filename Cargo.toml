@@ -12,6 +12,9 @@ tokio-postgres = { version = "0.5.0" }
 r2d2_postgres = " 0.16.0"
 r2d2 = "0.8"
 chrono = "0.4"
+hyper = "0.13"
+prometheus = { version = "0.10", features = ["process"] }
+lazy_static = "1"
 
 [dependencies.furaffinity-rs]
 git = "https://github.com/Syfaro/furaffinity-rs"
