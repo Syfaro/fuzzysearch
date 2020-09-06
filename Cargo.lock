@@ -398,7 +398,7 @@ checksum = "3dcaa9ae7725d12cdb85b3ad99a434db70b468c09ded17e012d86b5c1010f7a7"
 [[package]]
 name = "furaffinity-rs"
 version = "0.1.0"
-source = "git+https://github.com/Syfaro/furaffinity-rs#3e17efcbc75f18f11e425eacb4bfafcceff4be72"
+source = "git+https://github.com/Syfaro/furaffinity-rs#6ebc01a0e45b9067bd25e5dbd624b9a6dffb8658"
 dependencies = [
  "cfscrape",
  "chrono",
@@ -408,6 +408,7 @@ dependencies = [
  "regex",
  "reqwest",
  "scraper",
+ "sha2",
  "tokio",
 ]
 

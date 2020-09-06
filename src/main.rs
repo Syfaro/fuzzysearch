@@ -83,8 +83,10 @@ async fn insert_submission(
     let hash = sub.hash.clone();
     let url = sub.content.url();
 
-    client.execute("INSERT INTO submission (id, artist_id, url, filename, hash, rating, posted_at, description, hash_int, file_id) VALUES ($1, $2, $3, $4, decode($5, 'base64'), $6, $7, $8, $9, CASE WHEN isnumeric(split_part($4, '.', 1)) THEN split_part($4, '.', 1)::int ELSE null END)", &[
-        &sub.id, &artist_id, &url, &sub.filename, &hash, &sub.rating.serialize(), &sub.posted_at, &sub.description, &sub.hash_num,
+    let size = sub.file_size.map(|size| size as i32);
+
+    client.execute("INSERT INTO submission (id, artist_id, url, filename, hash, rating, posted_at, description, hash_int, file_id, file_size, file_sha256) VALUES ($1, $2, $3, $4, decode($5, 'base64'), $6, $7, $8, $9, CASE WHEN isnumeric(split_part($4, '.', 1)) THEN split_part($4, '.', 1)::int ELSE null END, $10, $11)", &[
+        &sub.id, &artist_id, &url, &sub.filename, &hash, &sub.rating.serialize(), &sub.posted_at, &sub.description, &sub.hash_num, &size, &sub.file_sha256,
     ]).await?;
 
     let stmt = client
@@ -133,7 +135,7 @@ async fn request(
 async fn web() {
     use hyper::service::{make_service_fn, service_fn};
 
-    let addr = ([127, 0, 0, 1], 3000).into();
+    let addr: std::net::SocketAddr = std::env::var("HTTP_HOST").unwrap().parse().unwrap();
 
     let service = make_service_fn(|_| async { Ok::<_, hyper::Error>(service_fn(request)) });
 
