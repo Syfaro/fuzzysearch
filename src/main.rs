@@ -153,6 +153,9 @@ async fn main() {
         std::env::var("FA_B").expect("missing fa cookie b"),
     );
 
+    let path = std::env::var("OUT_DIR").expect("missing output directory");
+    let path = std::path::Path::new(&path);
+
     let user_agent = std::env::var("USER_AGENT").expect("missing user agent");
 
     let fa = furaffinity_rs::FurAffinity::new(cookie_a, cookie_b, user_agent);
@@ -219,6 +222,26 @@ async fn main() {
                     };
 
                     timer.stop_and_record();
+
+                    if let Some(sha) = &sub.file_sha256 {
+                        use tokio::io::AsyncWriteExt;
+
+                        let file = sub.file.as_ref().unwrap();
+                        let ext = sub.filename.split('.').last().unwrap();
+
+                        let h = hex::encode(sha);
+                        let p = path.join(&h[0..2]).join(&h[2..4]);
+                        std::fs::create_dir_all(&p).expect("unable to create hash directory");
+
+                        let name = format!("{}.{}", h, ext);
+                        let name = std::path::Path::new(&name);
+                        let name = p.join(name);
+
+                        if !name.exists() {
+                            let mut f = tokio::fs::File::create(&name).await.expect("unable to create submission file");
+                            f.write_all(file).await.expect("unable to write file contents");
+                        }
+                    }
 
                     insert_submission(&client, &sub).await.unwrap();
 
