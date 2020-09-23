@@ -4,18 +4,17 @@ async fn load_page(
 ) -> (Vec<i32>, serde_json::Value) {
     println!("Loading page with before_id {:?}", before_id);
 
-    let mut query: Vec<(&'static str, String)> =
-        vec![("typed_tags", "true".into()), ("count", "320".into())];
+    let mut query: Vec<(&'static str, String)> = vec![("limit", "320".into())];
 
     if let Some(before_id) = before_id {
-        query.push(("before_id", before_id.to_string()));
+        query.push(("page", format!("b{}", before_id)));
         if before_id <= 14 {
             panic!("that's it.");
         }
     }
 
     let body = client
-        .get("https://e621.net/post/index.json")
+        .get("https://e621.net/posts.json")
         .query(&query)
         .send()
         .await
@@ -26,10 +25,16 @@ async fn load_page(
 
     let json = serde_json::from_str(&body).expect("Unable to parse data");
 
-    let posts = match json {
-        serde_json::Value::Array(ref arr) => arr,
-        _ => panic!("invalid response"),
+    let page = match json {
+        serde_json::Value::Object(ref obj) => obj,
+        _ => panic!("top level value was not object"),
     };
+
+    let posts = page
+        .get("posts")
+        .expect("unable to get posts object")
+        .as_array()
+        .expect("posts was not array");
 
     let ids = posts
         .iter()
@@ -48,7 +53,7 @@ async fn load_page(
         })
         .collect();
 
-    (ids, json)
+    (ids, serde_json::Value::Array(posts.to_vec()))
 }
 
 #[tokio::main]

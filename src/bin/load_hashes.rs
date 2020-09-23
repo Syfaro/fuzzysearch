@@ -10,7 +10,7 @@ struct NeededPost {
 async fn hash_url(
     client: std::sync::Arc<reqwest::Client>,
     url: String,
-) -> Result<(img_hash::ImageHash, i64), image::ImageError> {
+) -> Result<(img_hash::ImageHash<[u8; 8]>, i64), image::ImageError> {
     let data = client
         .get(&url)
         .send()
@@ -21,7 +21,13 @@ async fn hash_url(
         .expect("unable to get bytes");
 
     let hasher = furaffinity_rs::get_hasher();
-    let image = image::load_from_memory(&data)?;
+    let image = match image::load_from_memory(&data) {
+        Ok(image) => image,
+        Err(e) => {
+            println!("{:?}", &data[0..50]);
+            return Err(e);
+        }
+    };
 
     let hash = hasher.hash_image(&image);
     let mut bytes: [u8; 8] = [0; 8];
@@ -43,14 +49,14 @@ async fn load_next_posts(
         .query(
             "SELECT
                     id,
-                    data->>'file_url' file_url
+                    data->'file'->>'url' file_url
                 FROM
                     e621
                 WHERE
                     hash IS NULL AND
                     hash_error IS NULL AND
-                    data->>'file_ext' IN ('jpg', 'png') AND
-                    data->>'file_url' <> '/images/deleted-preview.png'
+                    data->'file'->>'ext' IN ('jpg', 'png') AND
+                    data->'file'->>'url' <> '/images/deleted-preview.png'
                 ORDER BY id DESC
                 LIMIT 384",
             &[],
@@ -106,17 +112,31 @@ async fn main() {
                 hash_url(client, post.full_url.clone()).then(move |res| async move {
                     match res {
                         Ok((_hash, num)) => {
-                            db.get()
+                            let mut conn = db.get().await.unwrap();
+
+                            let tx = conn
+                                .transaction()
                                 .await
-                                .unwrap()
-                                .execute("UPDATE e621 SET hash = $2 WHERE id = $1", &[&id, &num])
+                                .expect("Unable to create transaction");
+
+                            tx.execute("UPDATE e621 SET hash = $2 WHERE id = $1", &[&id, &num])
                                 .await
                                 .expect("Unable to update hash in database");
+
+                            tx.execute(
+                                "INSERT INTO hashes (e621_id, hash) VALUES ($1, $2)",
+                                &[&id, &num],
+                            )
+                            .await
+                            .expect("Unable to insert hash to hashes table");
+
+                            tx.commit().await.expect("Unable to commit tx");
+
+                            drop(conn);
                         }
                         Err(e) => {
-                            use std::error::Error;
-                            let desc = e.description();
-                            println!("hashing error - {}", desc);
+                            let desc = e.to_string();
+                            println!("[{}] hashing error - {}", id, desc);
                             db.get()
                                 .await
                                 .unwrap()
@@ -131,7 +151,11 @@ async fn main() {
                 })
             });
 
+            println!("joining futs");
+
             futures::future::join_all(futs).await;
+
+            println!("futs completed");
         }
     }
 }

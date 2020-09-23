@@ -17,6 +17,9 @@ tokio-postgres = { version = "0.5.1", features = ["with-serde_json-1"] }
 bb8 = { git = "https://github.com/khuey/bb8.git" }
 bb8-postgres = { git = "https://github.com/khuey/bb8.git" }
 
-furaffinity-rs = { git = "https://git.huefox.com/syfaro/furaffinity-rs.git" }
-image = "0.22"
+furaffinity-rs = { git = "https://github.com/Syfaro/furaffinity-rs.git" }
+image = "0.23"
 img_hash = "*"
+
+[profile.dev.package."*"]
+opt-level = 2

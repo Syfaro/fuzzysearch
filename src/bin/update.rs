@@ -1,18 +1,11 @@
-async fn load_page(
-    client: &reqwest::Client,
-    before_id: Option<i32>,
-) -> (Vec<i32>, serde_json::Value) {
-    println!("Loading page with before_id {:?}", before_id);
+async fn load_page(client: &reqwest::Client, after_id: i32) -> (Vec<i32>, Vec<serde_json::Value>) {
+    println!("Loading page with after_id {:?}", after_id);
 
-    let mut query: Vec<(&'static str, String)> =
-        vec![("typed_tags", "true".into()), ("count", "320".into())];
-
-    if let Some(before_id) = before_id {
-        query.push(("before_id", before_id.to_string()));
-    }
+    let mut query: Vec<(&'static str, String)> = vec![("limit", "320".into())];
+    query.push(("page", format!("a{}", after_id)));
 
     let body = client
-        .get("https://e621.net/post/index.json")
+        .get("https://e621.net/posts.json")
         .query(&query)
         .send()
         .await
@@ -23,10 +16,16 @@ async fn load_page(
 
     let json = serde_json::from_str(&body).expect("Unable to parse data");
 
-    let posts = match json {
-        serde_json::Value::Array(ref arr) => arr,
-        _ => panic!("invalid response"),
+    let page = match json {
+        serde_json::Value::Object(ref obj) => obj,
+        _ => panic!("top level value was not object"),
     };
+
+    let posts = page
+        .get("posts")
+        .expect("unable to get posts object")
+        .as_array()
+        .expect("posts was not array");
 
     let ids = posts
         .iter()
@@ -45,14 +44,62 @@ async fn load_page(
         })
         .collect();
 
-    (ids, json)
+    (ids, posts.to_vec())
+}
+
+async fn get_latest_id(client: &reqwest::Client) -> i32 {
+    println!("Looking up current highest ID");
+
+    let query = vec![("limit", "1")];
+
+    let body = client
+        .get("https://e621.net/posts.json")
+        .query(&query)
+        .send()
+        .await
+        .expect("unable to make request")
+        .text()
+        .await
+        .expect("unable to convert to text");
+
+    let json = serde_json::from_str(&body).expect("Unable to parse data");
+
+    let page = match json {
+        serde_json::Value::Object(ref obj) => obj,
+        _ => panic!("top level value was not object"),
+    };
+
+    let posts = page
+        .get("posts")
+        .expect("unable to get posts object")
+        .as_array()
+        .expect("posts was not array");
+
+    let ids: Vec<i32> = posts
+        .iter()
+        .map(|post| {
+            let post = match post {
+                serde_json::Value::Object(post) => post,
+                _ => panic!("invalid post data"),
+            };
+
+            match post.get("id").expect("missing post id") {
+                serde_json::Value::Number(num) => {
+                    num.as_i64().expect("invalid post id type") as i32
+                }
+                _ => panic!("invalid post id"),
+            }
+        })
+        .collect();
+
+    ids.into_iter().max().expect("no ids found")
 }
 
 #[tokio::main]
 async fn main() {
     let dsn = std::env::var("POSTGRES_DSN").expect("missing postgres dsn");
 
-    let (db, connection) = tokio_postgres::connect(&dsn, tokio_postgres::NoTls)
+    let (mut db, connection) = tokio_postgres::connect(&dsn, tokio_postgres::NoTls)
         .await
         .expect("Unable to connect");
 
@@ -76,27 +123,42 @@ async fn main() {
     println!("max is id: {}", max_id);
 
     let mut now;
-    let mut min_id: Option<i32> = None;
+
+    // Start with the minimum ID we're requesting being our previous highest
+    // ID found.
+    let mut min_id = max_id;
+
+    // Find highest ID to look for. Once we get this value back, we've gotten
+    // as many new posts as we were looking for.
+    let latest_id = get_latest_id(&client).await;
 
     loop {
         now = std::time::Instant::now();
 
+        // Load any posts with an ID higher than our previous run.
         let (ids, post_data) = load_page(&client, min_id).await;
-        min_id = ids.into_iter().min();
 
-        db.execute(
-            "INSERT INTO e621 (data) SELECT json_array_elements($1::json) ON CONFLICT DO NOTHING",
-            &[&post_data],
-        )
-        .await
-        .expect("Unable to insert");
+        // Calculate a new minimum value to find posts after by looking at the
+        // maximum value returned in this run.
+        min_id = *ids.iter().max().expect("no ids found");
 
-        if let Some(min_id) = min_id {
-            println!("min id is: {}", min_id);
-            if min_id <= max_id {
-                println!("finished run, {}, {}", min_id, max_id);
-                break;
-            }
+        let tx = db.transaction().await.expect("unable to start transaction");
+
+        for post in post_data {
+            tx.execute(
+                "INSERT INTO e621 (data) VALUES ($1::json) ON CONFLICT DO NOTHING",
+                &[&post],
+            )
+            .await
+            .expect("Unable to insert");
+        }
+
+        tx.commit().await.expect("unable to commit transaction");
+
+        // If it contains the latest ID, we're done.
+        if ids.contains(&latest_id) {
+            println!("finished run, latest_id {}, max_id {}", latest_id, max_id);
+            break;
         }
 
         let elapsed = now.elapsed().as_millis() as u64;
