@@ -72,10 +72,10 @@ async fn load_submission(
     client: &reqwest::Client,
     api_key: &str,
     id: i32,
-) -> anyhow::Result<Option<(WeasylSubmission, serde_json::Value)>> {
+) -> anyhow::Result<(Option<WeasylSubmission>, serde_json::Value)> {
     println!("Loading submission {}", id);
 
-    let body: Result<serde_json::Value, _> = client
+    let body: serde_json::Value = client
         .get(&format!(
             "https://www.weasyl.com/api/submissions/{}/view",
             id
@@ -84,18 +84,16 @@ async fn load_submission(
         .send()
         .await?
         .json()
-        .await;
+        .await?;
 
-    let body = match body {
-        Err(_err) => return Ok(None),
-        Ok(body) => body,
+    let data: WeasylResponse<WeasylSubmission> = match serde_json::from_value(body.clone()) {
+        Ok(data) => data,
+        Err(_err) => return Ok((None, body)),
     };
-
-    let data: WeasylResponse<WeasylSubmission> = serde_json::from_value(body.clone())?;
 
     let res = match data {
         WeasylResponse::Response(sub) if sub.subtype == WeasylSubmissionSubtype::Visual => {
-            Some((sub, body))
+            Some(sub)
         }
         WeasylResponse::Response(_sub) => None,
         WeasylResponse::Error {
@@ -106,7 +104,7 @@ async fn load_submission(
         } => return Err(anyhow::anyhow!(name)),
     };
 
-    Ok(res)
+    Ok((res, body))
 }
 
 async fn process_submission(
@@ -153,10 +151,14 @@ async fn process_submission(
     Ok(())
 }
 
-async fn insert_null(pool: &sqlx::Pool<sqlx::Postgres>, id: i32) -> anyhow::Result<()> {
+async fn insert_null(
+    pool: &sqlx::Pool<sqlx::Postgres>,
+    body: serde_json::Value,
+    id: i32,
+) -> anyhow::Result<()> {
     println!("Inserting null for submission {}", id);
 
-    sqlx::query!("INSERT INTO WEASYL (id) VALUES ($1)", id)
+    sqlx::query!("INSERT INTO WEASYL (id, data) VALUES ($1, $2)", id, body)
         .execute(pool)
         .await?;
 
@@ -194,8 +196,8 @@ async fn main() {
         }
 
         match load_submission(&client, &api_key, id).await.unwrap() {
-            Some((sub, json)) => process_submission(&pool, &client, json, sub).await.unwrap(),
-            None => insert_null(&pool, id).await.unwrap(),
+            (Some(sub), json) => process_submission(&pool, &client, json, sub).await.unwrap(),
+            (None, body) => insert_null(&pool, body, id).await.unwrap(),
         }
     }
 }
