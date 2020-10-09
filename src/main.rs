@@ -75,7 +75,7 @@ async fn load_submission(
 ) -> anyhow::Result<Option<(WeasylSubmission, serde_json::Value)>> {
     println!("Loading submission {}", id);
 
-    let body: serde_json::Value = client
+    let body: Result<serde_json::Value, _> = client
         .get(&format!(
             "https://www.weasyl.com/api/submissions/{}/view",
             id
@@ -84,7 +84,12 @@ async fn load_submission(
         .send()
         .await?
         .json()
-        .await?;
+        .await;
+
+    let body = match body {
+        Err(_err) => return Ok(None),
+        Ok(body) => body,
+    };
 
     let data: WeasylResponse<WeasylSubmission> = serde_json::from_value(body.clone())?;
 
