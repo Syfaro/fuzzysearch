@@ -122,16 +122,22 @@ async fn process_submission(
         .bytes()
         .await?;
 
-    let hasher = img_hash::HasherConfig::with_bytes_type::<[u8; 8]>()
-        .hash_alg(img_hash::HashAlg::Gradient)
-        .hash_size(8, 8)
-        .preproc_dct()
-        .to_hasher();
-    let image = image::load_from_memory(&data)?;
-    let hash = hasher.hash_image(&image);
-    let mut bytes: [u8; 8] = [0; 8];
-    bytes.copy_from_slice(hash.as_bytes());
-    let num = i64::from_be_bytes(bytes);
+    let num = if let Ok(image) = image::load_from_memory(&data) {
+        let hasher = img_hash::HasherConfig::with_bytes_type::<[u8; 8]>()
+            .hash_alg(img_hash::HashAlg::Gradient)
+            .hash_size(8, 8)
+            .preproc_dct()
+            .to_hasher();
+        let hash = hasher.hash_image(&image);
+        let mut bytes: [u8; 8] = [0; 8];
+        bytes.copy_from_slice(hash.as_bytes());
+        let num = i64::from_be_bytes(bytes);
+        Some(num)
+    } else {
+        println!("Unable to decode image on submission {}", sub.id);
+
+        None
+    };
 
     let mut hasher = Sha256::new();
     hasher.update(&data);
