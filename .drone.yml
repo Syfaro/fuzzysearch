@@ -33,7 +33,8 @@ steps:
 - name: docker
   image: plugins/docker
   settings:
-    auto_tag: true
+    tags:
+      - latest
     password:
       from_secret: docker_password
     registry: registry.huefox.com
