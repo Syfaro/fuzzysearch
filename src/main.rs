@@ -48,7 +48,7 @@ enum WeasylResponse<T> {
 }
 
 async fn load_frontpage(client: &reqwest::Client, api_key: &str) -> anyhow::Result<i32> {
-    let resp: WeasylResponse<Vec<WeasylFrontpageSubmission>> = client
+    let resp: WeasylResponse<Vec<serde_json::Value>> = client
         .get("https://www.weasyl.com/api/submissions/frontpage")
         .header("X-Weasyl-API-Key", api_key)
         .send()
@@ -63,9 +63,13 @@ async fn load_frontpage(client: &reqwest::Client, api_key: &str) -> anyhow::Resu
         } => return Err(anyhow::anyhow!(name)),
     };
 
-    let max = subs.into_iter().max_by_key(|sub| sub.id);
+    let max = subs
+        .into_iter()
+        .filter_map(|sub| sub.get("submitid").and_then(|id| id.as_i64()))
+        .max()
+        .unwrap_or_default();
 
-    Ok(max.map(|sub| sub.id).unwrap_or_default())
+    Ok(max as i32)
 }
 
 async fn load_submission(
