@@ -15,7 +15,6 @@ chrono = "0.4"
 hyper = "0.13"
 prometheus = { version = "0.11", features = ["process"] }
 lazy_static = "1"
-hex = "0.4"
 
 [dependencies.furaffinity-rs]
 git = "https://github.com/Syfaro/furaffinity-rs"

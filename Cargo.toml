@@ -1,7 +1,8 @@
 [workspace]
 members = [
     "fuzzysearch",
-    "fuzzysearch-common"
+    "fuzzysearch-common",
+    "fuzzysearch-ingest-furaffinity"
 ]
 
 [profile.dev]

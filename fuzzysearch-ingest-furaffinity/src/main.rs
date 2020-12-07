@@ -73,7 +73,7 @@ async fn ids_to_check(client: &Client, max: i32) -> Vec<i32> {
 async fn insert_submission(
     client: &Client,
     sub: &furaffinity_rs::Submission,
-) -> Result<(), postgres::Error> {
+) -> Result<(), tokio_postgres::Error> {
     let artist_id = lookup_artist(&client, &sub.artist).await;
     let mut tag_ids = Vec::with_capacity(sub.tags.len());
     for tag in &sub.tags {
@@ -100,7 +100,7 @@ async fn insert_submission(
     Ok(())
 }
 
-async fn insert_null_submission(client: &Client, id: i32) -> Result<u64, postgres::Error> {
+async fn insert_null_submission(client: &Client, id: i32) -> Result<u64, tokio_postgres::Error> {
     client
         .execute("INSERT INTO SUBMISSION (id) VALUES ($1)", &[&id])
         .await
@@ -152,9 +152,6 @@ async fn main() {
         std::env::var("FA_A").expect("missing fa cookie a"),
         std::env::var("FA_B").expect("missing fa cookie b"),
     );
-
-    let path = std::env::var("OUT_DIR").expect("missing output directory");
-    let path = std::path::Path::new(&path);
 
     let user_agent = std::env::var("USER_AGENT").expect("missing user agent");
 
@@ -222,26 +219,6 @@ async fn main() {
                     };
 
                     timer.stop_and_record();
-
-                    if let Some(sha) = &sub.file_sha256 {
-                        use tokio::io::AsyncWriteExt;
-
-                        let file = sub.file.as_ref().unwrap();
-                        let ext = sub.filename.split('.').last().unwrap();
-
-                        let h = hex::encode(sha);
-                        let p = path.join(&h[0..2]).join(&h[2..4]);
-                        std::fs::create_dir_all(&p).expect("unable to create hash directory");
-
-                        let name = format!("{}.{}", h, ext);
-                        let name = std::path::Path::new(&name);
-                        let name = p.join(name);
-
-                        if !name.exists() {
-                            let mut f = tokio::fs::File::create(&name).await.expect("unable to create submission file");
-                            f.write_all(file).await.expect("unable to write file contents");
-                        }
-                    }
 
                     insert_submission(&client, &sub).await.unwrap();
 

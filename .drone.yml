@@ -15,18 +15,4 @@ steps:
     - cargo build
     - cargo test
 
-- name: build-latest
-  image: plugins/docker
-  settings:
-    auto_tag: true
-    password:
-      from_secret: docker_password
-    registry: registry.huefox.com
-    repo: registry.huefox.com/fuzzysearch
-    username:
-      from_secret: docker_username
-  when:
-    branch:
-    - master
-
 ...
