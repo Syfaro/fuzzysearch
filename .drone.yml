@@ -9,8 +9,9 @@ platform:
 
 steps:
 - name: test
-  image: rust:1-slim
+  image: rust:1-slim-buster
   commands:
+    - apt-get update -y && apt-get install -y libavcodec-dev libavformat-dev libavutil-dev libavdevice-dev pkg-config clang llvm
     - cargo build
     - cargo test
 
