@@ -36,8 +36,7 @@ impl From<tokio_postgres::Error> for Error {
 
 impl warp::reject::Reject for Error {}
 
-#[tracing::instrument(skip(form))]
-async fn hash_input(form: warp::multipart::FormData) -> (i64, img_hash::ImageHash<[u8; 8]>) {
+async fn get_field_bytes(form: warp::multipart::FormData, field: &str) -> bytes::BytesMut {
     use bytes::BufMut;
     use futures_util::StreamExt;
 
@@ -49,15 +48,19 @@ async fn hash_input(form: warp::multipart::FormData) -> (i64, img_hash::ImageHas
             (part.name().to_string(), part)
         })
         .collect::<std::collections::HashMap<_, _>>();
-    let image = parts.remove("image").unwrap();
+    let data = parts.remove(field).unwrap();
 
-    let bytes = image
-        .stream()
+    data.stream()
         .fold(bytes::BytesMut::new(), |mut b, data| {
             b.put(data.unwrap());
             async move { b }
         })
-        .await;
+        .await
+}
+
+#[tracing::instrument(skip(form))]
+async fn hash_input(form: warp::multipart::FormData) -> (i64, img_hash::ImageHash<[u8; 8]>) {
+    let bytes = get_field_bytes(form, "image").await;
 
     let len = bytes.len();
 
@@ -74,6 +77,28 @@ async fn hash_input(form: warp::multipart::FormData) -> (i64, img_hash::ImageHas
     buf.copy_from_slice(&hash.as_bytes());
 
     (i64::from_be_bytes(buf), hash)
+}
+
+#[tracing::instrument(skip(form))]
+async fn hash_video(form: warp::multipart::FormData) -> Vec<[u8; 8]> {
+    use bytes::buf::BufExt;
+
+    let bytes = get_field_bytes(form, "video").await;
+
+    let hashes = tokio::task::spawn_blocking(move || {
+        if infer::is_video(&bytes) {
+            crate::video::extract_video_hashes(bytes.reader()).unwrap()
+        } else if infer::image::is_gif(&bytes) {
+            crate::video::extract_gif_hashes(bytes.reader()).unwrap()
+        } else {
+            panic!("invalid file type provided");
+        }
+    })
+    .instrument(span!(tracing::Level::TRACE, "hashing video"))
+    .await
+    .unwrap();
+
+    hashes
 }
 
 pub async fn search_image(
@@ -280,6 +305,16 @@ pub async fn search_file(
         .collect();
 
     Ok(warp::reply::json(&matches))
+}
+
+pub async fn search_video(
+    form: warp::multipart::FormData,
+    db: Pool,
+    api_key: String,
+) -> Result<impl Reply, Rejection> {
+    let hashes = hash_video(form).await;
+
+    Ok(warp::reply::json(&hashes))
 }
 
 pub async fn check_handle(opts: HandleOpts, db: Pool) -> Result<impl Reply, Rejection> {

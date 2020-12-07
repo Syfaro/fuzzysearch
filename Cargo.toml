@@ -13,7 +13,7 @@ opentelemetry = "0.6"
 opentelemetry-jaeger = "0.5"
 tracing-opentelemetry = "0.5"
 
-tokio = { version = "0.3", features = ["macros", "rt-multi-thread", "sync"] }
+tokio = { version = "0.2", features = ["full"] }
 futures = "0.3"
 futures-util = "0.3"
 
@@ -21,13 +21,14 @@ anyhow = "1"
 chrono = "0.4"
 bytes = "0.5"
 tempfile = "3"
+infer = { version = "0.3", default-features = false }
 
 serde = { version = "1", features = ["derive"] }
 warp = "0.2"
 
-tokio-postgres = "0.6"
-bb8 = "0.6"
-bb8-postgres = "0.6"
+tokio-postgres = "0.5"
+bb8 = "0.4"
+bb8-postgres = "0.4"
 
 image = "0.23"
 ffmpeg-next = "4"
