@@ -67,7 +67,7 @@ pub fn image_query_sync(
     distance: i64,
     hash: Option<Vec<u8>>,
 ) -> tokio::sync::mpsc::Receiver<Result<Vec<File>, tokio_postgres::Error>> {
-    let (mut tx, rx) = tokio::sync::mpsc::channel(50);
+    let (tx, rx) = tokio::sync::mpsc::channel(50);
 
     tokio::spawn(async move {
         let db = pool.get().await.unwrap();
