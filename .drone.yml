@@ -8,6 +8,12 @@ platform:
   arch: amd64
 
 steps:
+- name: test
+  image: rust:1-slim
+  commands:
+    - cargo build
+    - cargo test
+
 - name: build-latest
   image: plugins/docker
   settings:
@@ -21,20 +27,5 @@ steps:
   when:
     branch:
     - master
-
-- name: build-branch
-  image: plugins/docker
-  settings:
-    password:
-      from_secret: docker_password
-    registry: registry.huefox.com
-    repo: registry.huefox.com/fuzzysearch
-    tags: ${DRONE_BRANCH}
-    username:
-      from_secret: docker_username
-  when:
-    branch:
-      exclude:
-      - master
 
 ...

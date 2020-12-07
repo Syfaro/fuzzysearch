@@ -9,6 +9,7 @@ mod handlers;
 mod models;
 mod types;
 mod utils;
+mod video;
 
 use warp::Filter;
 
@@ -89,6 +90,8 @@ impl bk_tree::Metric<Node> for Hamming {
 
 #[tokio::main]
 async fn main() {
+    ffmpeg_next::init().expect("Unable to initialize ffmpeg");
+
     configure_tracing();
 
     let s = std::env::var("POSTGRES_DSN").expect("Missing POSTGRES_DSN");

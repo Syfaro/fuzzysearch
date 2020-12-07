@@ -17,8 +17,10 @@ tokio = { version = "0.3", features = ["macros", "rt-multi-thread", "sync"] }
 futures = "0.3"
 futures-util = "0.3"
 
+anyhow = "1"
 chrono = "0.4"
 bytes = "0.5"
+tempfile = "3"
 
 serde = { version = "1", features = ["derive"] }
 warp = "0.2"
@@ -27,8 +29,10 @@ tokio-postgres = "0.6"
 bb8 = "0.6"
 bb8-postgres = "0.6"
 
-img_hash = "3"
 image = "0.23"
+ffmpeg-next = "4"
+
+img_hash = "3"
 hamming = "0.1"
 
 bk-tree = "0.3"
