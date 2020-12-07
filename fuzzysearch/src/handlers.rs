@@ -5,6 +5,8 @@ use tracing::{span, warn};
 use tracing_futures::Instrument;
 use warp::{reject, Rejection, Reply};
 
+use fuzzysearch_common::types::{SearchResult, SiteInfo};
+
 fn map_bb8_err(err: bb8::RunError<tokio_postgres::Error>) -> Rejection {
     reject::custom(Error::from(err))
 }
@@ -65,7 +67,7 @@ async fn hash_input(form: warp::multipart::FormData) -> (i64, img_hash::ImageHas
     let len = bytes.len();
 
     let hash = tokio::task::spawn_blocking(move || {
-        let hasher = crate::get_hasher();
+        let hasher = fuzzysearch_common::get_hasher();
         let image = image::load_from_memory(&bytes).unwrap();
         hasher.hash_image(&image)
     })
@@ -87,9 +89,9 @@ async fn hash_video(form: warp::multipart::FormData) -> Vec<[u8; 8]> {
 
     let hashes = tokio::task::spawn_blocking(move || {
         if infer::is_video(&bytes) {
-            crate::video::extract_video_hashes(bytes.reader()).unwrap()
+            fuzzysearch_common::video::extract_video_hashes(bytes.reader()).unwrap()
         } else if infer::image::is_gif(&bytes) {
-            crate::video::extract_gif_hashes(bytes.reader()).unwrap()
+            fuzzysearch_common::video::extract_gif_hashes(bytes.reader()).unwrap()
         } else {
             panic!("invalid file type provided");
         }
@@ -195,7 +197,7 @@ pub async fn stream_image(
 }
 
 fn sse_matches(
-    matches: Result<Vec<File>, tokio_postgres::Error>,
+    matches: Result<Vec<SearchResult>, tokio_postgres::Error>,
 ) -> Result<impl warp::sse::ServerSentEvent, core::convert::Infallible> {
     let items = matches.unwrap();
 
@@ -286,7 +288,7 @@ pub async fn search_file(
         .await
         .map_err(map_postgres_err)?
         .into_iter()
-        .map(|row| File {
+        .map(|row| SearchResult {
             id: row.get("hash_id"),
             site_id: row.get::<&str, i32>("id") as i64,
             site_id_str: row.get::<&str, i32>("id").to_string(),
@@ -297,9 +299,9 @@ pub async fn search_file(
                 .map(|artist| vec![artist]),
             distance: None,
             hash: None,
-            site_info: Some(SiteInfo::FurAffinity(FurAffinityFile {
+            site_info: Some(SiteInfo::FurAffinity {
                 file_id: row.get("file_id"),
-            })),
+            }),
             searched_hash: None,
         })
         .collect();

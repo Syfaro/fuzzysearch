@@ -153,7 +153,7 @@ mod tests {
     fn test_extract_gif_hashes() -> anyhow::Result<()> {
         use std::fs::File;
 
-        let gif = File::open("tests/fox.gif")?;
+        let gif = File::open("../tests/fox.gif")?;
         let hashes = extract_gif_hashes(&gif)?;
 
         assert_eq!(
@@ -180,7 +180,7 @@ mod tests {
     fn test_extract_video_hashes() -> anyhow::Result<()> {
         use std::fs::File;
 
-        let video = File::open("tests/video.webm")?;
+        let video = File::open("../tests/video.webm")?;
         let hashes = extract_video_hashes(&video)?;
 
         assert_eq!(

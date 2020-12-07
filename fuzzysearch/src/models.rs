@@ -3,6 +3,8 @@ use crate::utils::extract_rows;
 use crate::{Pool, Tree};
 use tracing_futures::Instrument;
 
+use fuzzysearch_common::types::SearchResult;
+
 pub type DB<'a> =
     &'a bb8::PooledConnection<'a, bb8_postgres::PostgresConnectionManager<tokio_postgres::NoTls>>;
 
@@ -48,7 +50,7 @@ pub async fn image_query(
     hashes: Vec<i64>,
     distance: i64,
     hash: Option<Vec<u8>>,
-) -> Result<Vec<File>, tokio_postgres::Error> {
+) -> Result<Vec<SearchResult>, tokio_postgres::Error> {
     let mut results = image_query_sync(pool, tree, hashes, distance, hash);
     let mut matches = Vec::new();
 
@@ -66,8 +68,8 @@ pub fn image_query_sync(
     hashes: Vec<i64>,
     distance: i64,
     hash: Option<Vec<u8>>,
-) -> tokio::sync::mpsc::Receiver<Result<Vec<File>, tokio_postgres::Error>> {
-    let (tx, rx) = tokio::sync::mpsc::channel(50);
+) -> tokio::sync::mpsc::Receiver<Result<Vec<SearchResult>, tokio_postgres::Error>> {
+    let (mut tx, rx) = tokio::sync::mpsc::channel(50);
 
     tokio::spawn(async move {
         let db = pool.get().await.unwrap();

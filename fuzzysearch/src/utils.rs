@@ -1,6 +1,8 @@
 use crate::models::DB;
 use crate::types::*;
 
+use fuzzysearch_common::types::{SearchResult, SiteInfo};
+
 #[macro_export]
 macro_rules! rate_limit {
     ($api_key:expr, $db:expr, $limit:tt, $group:expr) => {
@@ -66,7 +68,7 @@ pub async fn update_rate_limit(
 pub fn extract_rows<'a>(
     rows: Vec<tokio_postgres::Row>,
     hash: Option<&'a [u8]>,
-) -> impl IntoIterator<Item = File> + 'a {
+) -> impl IntoIterator<Item = SearchResult> + 'a {
     rows.into_iter().map(move |row| {
         let dbhash: i64 = row.get("hash");
         let dbbytes = dbhash.to_be_bytes();
@@ -80,16 +82,16 @@ pub fn extract_rows<'a>(
         let (site_id, site_info) = if let Some(fa_id) = furaffinity_id {
             (
                 fa_id as i64,
-                Some(SiteInfo::FurAffinity(FurAffinityFile {
+                Some(SiteInfo::FurAffinity {
                     file_id: row.get("file_id"),
-                })),
+                }),
             )
         } else if let Some(e6_id) = e621_id {
             (
                 e6_id as i64,
-                Some(SiteInfo::E621(E621File {
+                Some(SiteInfo::E621 {
                     sources: row.get("sources"),
-                })),
+                }),
             )
         } else if let Some(t_id) = twitter_id {
             (t_id, Some(SiteInfo::Twitter))
@@ -97,7 +99,7 @@ pub fn extract_rows<'a>(
             (-1, None)
         };
 
-        File {
+        SearchResult {
             id: row.get("id"),
             site_id,
             site_info,

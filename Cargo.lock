@@ -554,6 +554,7 @@ dependencies = [
  "ffmpeg-next",
  "futures",
  "futures-util",
+ "fuzzysearch-common",
  "hamming",
  "image",
  "img_hash",
@@ -561,7 +562,6 @@ dependencies = [
  "opentelemetry",
  "opentelemetry-jaeger",
  "serde",
- "tempfile",
  "tokio",
  "tokio-postgres",
  "tracing",
@@ -569,6 +569,19 @@ dependencies = [
  "tracing-opentelemetry",
  "tracing-subscriber",
  "warp",
+]
+
+[[package]]
+name = "fuzzysearch-common"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "ffmpeg-next",
+ "image",
+ "img_hash",
+ "serde",
+ "tempfile",
+ "tracing",
 ]
 
 [[package]]

@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use fuzzysearch_common::types::SearchResult;
+
 /// An API key representation from the database.alloc
 ///
 /// May contain information about the owner, always has rate limit information.
@@ -21,52 +23,6 @@ pub enum RateLimit {
     Limited,
     /// This key is available, contains the number of requests made.
     Available(i16),
-}
-
-/// A general type for every file.
-#[derive(Debug, Default, Serialize)]
-pub struct File {
-    pub id: i32,
-
-    pub site_id: i64,
-    pub site_id_str: String,
-
-    pub url: String,
-    pub filename: String,
-    pub artists: Option<Vec<String>>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(flatten)]
-    pub site_info: Option<SiteInfo>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub hash: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub distance: Option<u64>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub searched_hash: Option<i64>,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(tag = "site", content = "site_info")]
-pub enum SiteInfo {
-    FurAffinity(FurAffinityFile),
-    #[serde(rename = "e621")]
-    E621(E621File),
-    Twitter,
-}
-
-/// Information about a file hosted on FurAffinity.
-#[derive(Debug, Serialize)]
-pub struct FurAffinityFile {
-    pub file_id: i32,
-}
-
-/// Information about a file hosted on e621.
-#[derive(Debug, Serialize)]
-pub struct E621File {
-    pub sources: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -93,7 +49,7 @@ pub enum ImageSearchType {
 #[derive(Debug, Serialize)]
 pub struct ImageSimilarity {
     pub hash: i64,
-    pub matches: Vec<File>,
+    pub matches: Vec<SearchResult>,
 }
 
 #[derive(Serialize)]
