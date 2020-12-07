@@ -1,0 +1,22 @@
+[package]
+name = "fa-watcher"
+version = "0.1.0"
+authors = ["Syfaro <syfaro@huefox.com>"]
+edition = "2018"
+
+[dependencies]
+reqwest = "0.10"
+postgres = { version = "0.17.0", features = ["with-chrono-0_4"] }
+tokio = { version = "0.2", features = ["full"] }
+tokio-postgres = { version = "0.5.0" }
+r2d2_postgres = " 0.16.0"
+r2d2 = "0.8"
+chrono = "0.4"
+hyper = "0.13"
+prometheus = { version = "0.10", features = ["process"] }
+lazy_static = "1"
+hex = "0.4"
+
+[dependencies.furaffinity-rs]
+git = "https://github.com/Syfaro/furaffinity-rs"
+features = ["cloudflare-bypass"]
