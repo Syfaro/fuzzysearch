@@ -127,11 +127,7 @@ async fn process_submission(
         .await?;
 
     let num = if let Ok(image) = image::load_from_memory(&data) {
-        let hasher = img_hash::HasherConfig::with_bytes_type::<[u8; 8]>()
-            .hash_alg(img_hash::HashAlg::Gradient)
-            .hash_size(8, 8)
-            .preproc_dct()
-            .to_hasher();
+        let hasher = fuzzysearch_common::get_hasher();
         let hash = hasher.hash_image(&image);
         let mut bytes: [u8; 8] = [0; 8];
         bytes.copy_from_slice(hash.as_bytes());
@@ -187,27 +183,31 @@ async fn main() {
 
     let client = reqwest::Client::new();
 
-    let min = sqlx::query!("SELECT max(id) id FROM weasyl")
-        .fetch_one(&pool)
-        .await
-        .unwrap()
-        .id
-        .unwrap_or_default();
-
-    let max = load_frontpage(&client, &api_key).await.unwrap();
-
-    for id in (min + 1)..=max {
-        let row: Option<_> = sqlx::query!("SELECT id FROM weasyl WHERE id = $1", id)
-            .fetch_optional(&pool)
+    loop {
+        let min = sqlx::query!("SELECT max(id) id FROM weasyl")
+            .fetch_one(&pool)
             .await
-            .unwrap();
-        if row.is_some() {
-            continue;
+            .unwrap()
+            .id
+            .unwrap_or_default();
+
+        let max = load_frontpage(&client, &api_key).await.unwrap();
+
+        for id in (min + 1)..=max {
+            let row: Option<_> = sqlx::query!("SELECT id FROM weasyl WHERE id = $1", id)
+                .fetch_optional(&pool)
+                .await
+                .unwrap();
+            if row.is_some() {
+                continue;
+            }
+
+            match load_submission(&client, &api_key, id).await.unwrap() {
+                (Some(sub), json) => process_submission(&pool, &client, json, sub).await.unwrap(),
+                (None, body) => insert_null(&pool, body, id).await.unwrap(),
+            }
         }
 
-        match load_submission(&client, &api_key, id).await.unwrap() {
-            (Some(sub), json) => process_submission(&pool, &client, json, sub).await.unwrap(),
-            (None, body) => insert_null(&pool, body, id).await.unwrap(),
-        }
+        tokio::time::delay_for(std::time::Duration::from_secs(60 * 5)).await;
     }
 }

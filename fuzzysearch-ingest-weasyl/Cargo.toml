@@ -18,10 +18,9 @@ img_hash = "3"
 
 sha2 = "0.9"
 
-[dependencies.sqlx]
-version = "0.4.0-beta.1"
-default-features = false
-features = ["runtime-tokio", "macros", "postgres", "json", "offline"]
+fuzzysearch-common = { path = "../fuzzysearch-common" }
 
-[profile.dev.package."*"]
-opt-level = 2
+[dependencies.sqlx]
+version = "0.4"
+default-features = false
+features = ["runtime-tokio-rustls", "macros", "postgres", "json", "offline"]

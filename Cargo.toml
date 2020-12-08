@@ -2,7 +2,8 @@
 members = [
     "fuzzysearch",
     "fuzzysearch-common",
-    "fuzzysearch-ingest-furaffinity"
+    "fuzzysearch-ingest-furaffinity",
+    "fuzzysearch-ingest-weasyl"
 ]
 
 [profile.dev]
