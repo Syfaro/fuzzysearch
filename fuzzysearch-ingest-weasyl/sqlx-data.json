@@ -1,0 +1,82 @@
+{
+  "db": "PostgreSQL",
+  "05da31ef5ee193d5094c6e2dc0f7cb00b4b0720a1902af02069861868f176688": {
+    "query": "INSERT INTO weasyl (id, hash, sha256, file_size, data) VALUES ($1, $2, $3, $4, $5)",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Left": [
+          "Int4",
+          "Int8",
+          "Bytea",
+          "Int4",
+          "Jsonb"
+        ]
+      },
+      "nullable": []
+    }
+  },
+  "18a59439be1a5b6f03326ad14960fe1ada5cee94638711df99b471d86235be24": {
+    "query": "INSERT INTO WEASYL (id) VALUES ($1)",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Left": [
+          "Int4"
+        ]
+      },
+      "nullable": []
+    }
+  },
+  "364c5c10ad748d1822c3e909aca601993f0ddb7690368a82ae467b3b0950478e": {
+    "query": "INSERT INTO WEASYL (id, data) VALUES ($1, $2)",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Left": [
+          "Int4",
+          "Jsonb"
+        ]
+      },
+      "nullable": []
+    }
+  },
+  "7ef3d8fa00b1245440aae6f91bfc23bddee7730fc2de67e2f359762ce8db3bf4": {
+    "query": "SELECT id FROM weasyl WHERE id = $1",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int4"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Int4"
+        ]
+      },
+      "nullable": [
+        false
+      ]
+    }
+  },
+  "949eca4258721007af9db04f43830bd8df525f942b6673c7a5713735ed7746d6": {
+    "query": "SELECT max(id) id FROM weasyl",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int4"
+        }
+      ],
+      "parameters": {
+        "Left": []
+      },
+      "nullable": [
+        null
+      ]
+    }
+  }
+}

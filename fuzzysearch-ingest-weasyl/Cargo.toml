@@ -1,0 +1,27 @@
+[package]
+name = "weasyl-watcher"
+version = "0.1.0"
+authors = ["Syfaro <syfaro@huefox.com>"]
+edition = "2018"
+
+[dependencies]
+anyhow = "1"
+
+reqwest = { version = "0.10", features = ["json"] }
+tokio = { version = "0.2", features = ["full"] }
+
+serde = "1"
+serde_json = "1"
+
+image = "0.23"
+img_hash = "3"
+
+sha2 = "0.9"
+
+[dependencies.sqlx]
+version = "0.4.0-beta.1"
+default-features = false
+features = ["runtime-tokio", "macros", "postgres", "json", "offline"]
+
+[profile.dev.package."*"]
+opt-level = 2
