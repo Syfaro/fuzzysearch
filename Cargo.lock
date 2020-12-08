@@ -687,7 +687,7 @@ checksum = "0ba62103ce691c2fd80fbae2213dfdda9ce60804973ac6b6e97de818ea7f52c8"
 [[package]]
 name = "furaffinity-rs"
 version = "0.1.0"
-source = "git+https://github.com/Syfaro/furaffinity-rs#9367bb49bb2b0adf41d53f1afe787b01579043b4"
+source = "git+https://github.com/Syfaro/furaffinity-rs#5a53cd0fb7a3eff74a8e3d2d36b994c620490e5d"
 dependencies = [
  "cfscrape",
  "chrono",
