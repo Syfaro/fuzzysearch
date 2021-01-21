@@ -1,18 +1,10 @@
 use crate::models::{image_query, image_query_sync};
 use crate::types::*;
-use crate::{rate_limit, Pool, Tree};
+use crate::{early_return, rate_limit, Pool, Tree};
 use std::convert::TryInto;
 use tracing::{span, warn};
 use tracing_futures::Instrument;
-use warp::{reject, Rejection, Reply};
-
-fn map_bb8_err(err: bb8::RunError<tokio_postgres::Error>) -> Rejection {
-    reject::custom(Error::from(err))
-}
-
-fn map_postgres_err(err: tokio_postgres::Error) -> Rejection {
-    reject::custom(Error::from(err))
-}
+use warp::{Rejection, Reply};
 
 #[derive(Debug)]
 enum Error {
@@ -21,6 +13,36 @@ enum Error {
     InvalidData,
     ApiKey,
     RateLimit,
+}
+
+impl warp::Reply for Error {
+    fn into_response(self) -> warp::reply::Response {
+        let msg = match self {
+            Error::BB8(_) | Error::Postgres(_) => ErrorMessage {
+                code: 500,
+                message: "Internal server error".to_string(),
+            },
+            Error::InvalidData => ErrorMessage {
+                code: 400,
+                message: "Invalid data provided".to_string(),
+            },
+            Error::ApiKey => ErrorMessage {
+                code: 401,
+                message: "Invalid API key".to_string(),
+            },
+            Error::RateLimit => ErrorMessage {
+                code: 429,
+                message: "Too many requests".to_string(),
+            },
+        };
+
+        let body = hyper::body::Body::from(serde_json::to_string(&msg).unwrap());
+
+        warp::http::Response::builder()
+            .status(msg.code)
+            .body(body)
+            .unwrap()
+    }
 }
 
 impl From<bb8::RunError<tokio_postgres::Error>> for Error {
@@ -34,8 +56,6 @@ impl From<tokio_postgres::Error> for Error {
         Error::Postgres(err)
     }
 }
-
-impl warp::reject::Reject for Error {}
 
 #[tracing::instrument(skip(form))]
 async fn hash_input(form: warp::multipart::FormData) -> (i64, img_hash::ImageHash<[u8; 8]>) {
@@ -83,8 +103,8 @@ pub async fn search_image(
     pool: Pool,
     tree: Tree,
     api_key: String,
-) -> Result<impl Reply, Rejection> {
-    let db = pool.get().await.map_err(map_bb8_err)?;
+) -> Result<Box<dyn Reply>, Rejection> {
+    let db = early_return!(pool.get().await);
 
     rate_limit!(&api_key, &db, image_limit, "image");
     rate_limit!(&api_key, &db, hash_limit, "hash");
@@ -140,7 +160,7 @@ pub async fn search_image(
         matches: items,
     };
 
-    Ok(warp::reply::json(&similarity))
+    Ok(Box::new(warp::reply::json(&similarity)))
 }
 
 pub async fn stream_image(
@@ -148,8 +168,8 @@ pub async fn stream_image(
     pool: Pool,
     tree: Tree,
     api_key: String,
-) -> Result<impl Reply, Rejection> {
-    let db = pool.get().await.map_err(map_bb8_err)?;
+) -> Result<Box<dyn Reply>, Rejection> {
+    let db = early_return!(pool.get().await);
 
     rate_limit!(&api_key, &db, image_limit, "image", 2);
     rate_limit!(&api_key, &db, hash_limit, "hash");
@@ -170,7 +190,7 @@ pub async fn stream_image(
         }
     };
 
-    Ok(warp::sse::reply(event_stream))
+    Ok(Box::new(warp::sse::reply(event_stream)))
 }
 
 fn sse_matches(
@@ -186,9 +206,9 @@ pub async fn search_hashes(
     db: Pool,
     tree: Tree,
     api_key: String,
-) -> Result<impl Reply, Rejection> {
+) -> Result<Box<dyn Reply>, Rejection> {
     let pool = db.clone();
-    let db = db.get().await.map_err(map_bb8_err)?;
+    let db = early_return!(db.get().await);
 
     let hashes: Vec<i64> = opts
         .hashes
@@ -198,7 +218,7 @@ pub async fn search_hashes(
         .collect();
 
     if hashes.is_empty() {
-        return Err(warp::reject::custom(Error::InvalidData));
+        return Ok(Box::new(Error::InvalidData));
     }
 
     rate_limit!(&api_key, &db, image_limit, "image", hashes.len() as i16);
@@ -213,18 +233,18 @@ pub async fn search_hashes(
     let mut matches = Vec::new();
 
     while let Some(r) = results.recv().await {
-        matches.extend(r.map_err(|e| warp::reject::custom(Error::Postgres(e)))?);
+        matches.extend(early_return!(r));
     }
 
-    Ok(warp::reply::json(&matches))
+    Ok(Box::new(warp::reply::json(&matches)))
 }
 
 pub async fn search_file(
     opts: FileSearchOpts,
     db: Pool,
     api_key: String,
-) -> Result<impl Reply, Rejection> {
-    let db = db.get().await.map_err(map_bb8_err)?;
+) -> Result<Box<dyn Reply>, Rejection> {
+    let db = early_return!(db.get().await);
 
     rate_limit!(&api_key, &db, name_limit, "file");
 
@@ -236,7 +256,7 @@ pub async fn search_file(
         } else if let Some(ref url) = opts.url {
             ("lower(url) = lower($1)", url)
         } else {
-            return Err(warp::reject::custom(Error::InvalidData));
+            return Ok(Box::new(Error::InvalidData));
         };
 
     let query = format!(
@@ -259,49 +279,50 @@ pub async fn search_file(
         filter
     );
 
-    let matches: Vec<_> = db
-        .query::<str>(&*query, &[val])
-        .instrument(span!(tracing::Level::TRACE, "waiting for db"))
-        .await
-        .map_err(map_postgres_err)?
-        .into_iter()
-        .map(|row| File {
-            id: row.get("hash_id"),
-            site_id: row.get::<&str, i32>("id") as i64,
-            site_id_str: row.get::<&str, i32>("id").to_string(),
-            url: row.get("url"),
-            filename: row.get("filename"),
-            artists: row
-                .get::<&str, Option<String>>("name")
-                .map(|artist| vec![artist]),
-            distance: None,
-            hash: None,
-            site_info: Some(SiteInfo::FurAffinity(FurAffinityFile {
-                file_id: row.get("file_id"),
-            })),
-            searched_hash: None,
-        })
-        .collect();
+    let matches: Vec<_> = early_return!(
+        db.query::<str>(&*query, &[val])
+            .instrument(span!(tracing::Level::TRACE, "waiting for db"))
+            .await
+    )
+    .into_iter()
+    .map(|row| File {
+        id: row.get("hash_id"),
+        site_id: row.get::<&str, i32>("id") as i64,
+        site_id_str: row.get::<&str, i32>("id").to_string(),
+        url: row.get("url"),
+        filename: row.get("filename"),
+        artists: row
+            .get::<&str, Option<String>>("name")
+            .map(|artist| vec![artist]),
+        distance: None,
+        hash: None,
+        site_info: Some(SiteInfo::FurAffinity(FurAffinityFile {
+            file_id: row.get("file_id"),
+        })),
+        searched_hash: None,
+    })
+    .collect();
 
-    Ok(warp::reply::json(&matches))
+    Ok(Box::new(warp::reply::json(&matches)))
 }
 
-pub async fn check_handle(opts: HandleOpts, db: Pool) -> Result<impl Reply, Rejection> {
-    let db = db.get().await.map_err(map_bb8_err)?;
+pub async fn check_handle(opts: HandleOpts, db: Pool) -> Result<Box<dyn Reply>, Rejection> {
+    let db = early_return!(db.get().await);
 
     let exists = if let Some(handle) = opts.twitter {
-        !db.query(
-            "SELECT 1 FROM twitter_user WHERE lower(data->>'screen_name') = lower($1)",
-            &[&handle],
+        !early_return!(
+            db.query(
+                "SELECT 1 FROM twitter_user WHERE lower(data->>'screen_name') = lower($1)",
+                &[&handle],
+            )
+            .await
         )
-        .await
-        .map_err(map_postgres_err)?
         .is_empty()
     } else {
         false
     };
 
-    Ok(warp::reply::json(&exists))
+    Ok(Box::new(warp::reply::json(&exists)))
 }
 
 pub async fn search_image_by_url(
@@ -312,7 +333,7 @@ pub async fn search_image_by_url(
 ) -> Result<Box<dyn Reply>, Rejection> {
     let url = opts.url;
 
-    let db = pool.get().await.map_err(map_bb8_err)?;
+    let db = early_return!(pool.get().await);
 
     let image_remaining = rate_limit!(&api_key, &db, image_limit, "image");
     let hash_remaining = rate_limit!(&api_key, &db, hash_limit, "hash");
@@ -374,29 +395,6 @@ pub async fn handle_rejection(err: Rejection) -> Result<impl Reply, std::convert
             warp::http::StatusCode::NOT_FOUND,
             "This page does not exist",
         )
-    } else if let Some(err) = err.find::<Error>() {
-        match err {
-            Error::BB8(_inner) => (
-                warp::http::StatusCode::INTERNAL_SERVER_ERROR,
-                "A database error occured",
-            ),
-            Error::Postgres(_inner) => (
-                warp::http::StatusCode::INTERNAL_SERVER_ERROR,
-                "A database error occured",
-            ),
-            Error::InvalidData => (
-                warp::http::StatusCode::BAD_REQUEST,
-                "Unable to operate on provided data",
-            ),
-            Error::ApiKey => (
-                warp::http::StatusCode::UNAUTHORIZED,
-                "Invalid API key provided",
-            ),
-            Error::RateLimit => (
-                warp::http::StatusCode::TOO_MANY_REQUESTS,
-                "Your API token is rate limited",
-            ),
-        }
     } else {
         (
             warp::http::StatusCode::INTERNAL_SERVER_ERROR,

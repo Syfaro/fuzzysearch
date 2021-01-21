@@ -502,6 +502,7 @@ dependencies = [
  "futures",
  "futures-util",
  "hamming",
+ "hyper",
  "image",
  "img_hash",
  "opentelemetry",

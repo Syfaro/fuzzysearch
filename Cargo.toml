@@ -27,6 +27,7 @@ serde_json = "1"
 
 warp = "0.3"
 reqwest = "0.11"
+hyper = "0.14"
 
 tokio-postgres = "0.7"
 bb8 = "0.7"

@@ -8,20 +8,39 @@ macro_rules! rate_limit {
     };
 
     ($api_key:expr, $db:expr, $limit:tt, $group:expr, $incr_by:expr) => {{
-        let api_key = crate::models::lookup_api_key($api_key, $db)
-            .await
-            .ok_or_else(|| warp::reject::custom(Error::ApiKey))?;
+        let api_key = match crate::models::lookup_api_key($api_key, $db).await {
+            Some(api_key) => api_key,
+            None => return Ok(Box::new(Error::ApiKey)),
+        };
 
-        let rate_limit =
-            crate::utils::update_rate_limit($db, api_key.id, api_key.$limit, $group, $incr_by)
-                .await
-                .map_err(crate::handlers::map_postgres_err)?;
+        let rate_limit = match crate::utils::update_rate_limit(
+            $db,
+            api_key.id,
+            api_key.$limit,
+            $group,
+            $incr_by,
+        )
+        .await
+        {
+            Ok(rate_limit) => rate_limit,
+            Err(err) => return Ok(Box::new(Error::Postgres(err))),
+        };
 
         match rate_limit {
-            crate::types::RateLimit::Limited => return Err(warp::reject::custom(Error::RateLimit)),
+            crate::types::RateLimit::Limited => return Ok(Box::new(Error::RateLimit)),
             crate::types::RateLimit::Available(count) => count,
         }
     }};
+}
+
+#[macro_export]
+macro_rules! early_return {
+    ($val:expr) => {
+        match $val {
+            Ok(val) => val,
+            Err(err) => return Ok(Box::new(Error::from(err))),
+        }
+    };
 }
 
 /// Increment the rate limit for a group.
