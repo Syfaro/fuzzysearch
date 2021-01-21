@@ -130,7 +130,7 @@ async fn main() {
     let tree_clone = tree.clone();
     let pool_clone = db_pool.clone();
     tokio::spawn(async move {
-        use futures_util::StreamExt;
+        use futures::StreamExt;
 
         let max_id = std::sync::atomic::AtomicI32::new(max_id);
         let tree = tree_clone;
@@ -138,7 +138,13 @@ async fn main() {
 
         let order = std::sync::atomic::Ordering::SeqCst;
 
-        let interval = tokio::time::interval(std::time::Duration::from_secs(30));
+        let interval = async_stream::stream! {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
+
+            while let item = interval.tick().await {
+                yield item;
+            }
+        };
 
         interval
             .for_each(|_| async {
@@ -148,7 +154,7 @@ async fn main() {
                 let mut lock = tree.write().await;
                 let id = max_id.load(order);
 
-                let mut count = 0;
+                let mut count: usize = 0;
 
                 conn.query("SELECT id, hash FROM hashes WHERE hashes.id > $1", &[&id])
                     .await

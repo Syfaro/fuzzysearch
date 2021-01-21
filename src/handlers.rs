@@ -1,6 +1,7 @@
 use crate::models::{image_query, image_query_sync};
 use crate::types::*;
 use crate::{rate_limit, Pool, Tree};
+use std::convert::TryInto;
 use tracing::{span, warn};
 use tracing_futures::Instrument;
 use warp::{reject, Rejection, Reply};
@@ -148,8 +149,6 @@ pub async fn stream_image(
     tree: Tree,
     api_key: String,
 ) -> Result<impl Reply, Rejection> {
-    use futures_util::StreamExt;
-
     let db = pool.get().await.map_err(map_bb8_err)?;
 
     rate_limit!(&api_key, &db, image_limit, "image", 2);
@@ -157,24 +156,29 @@ pub async fn stream_image(
 
     let (num, hash) = hash_input(form).await;
 
-    let event_stream = image_query_sync(
+    let mut query = image_query_sync(
         pool.clone(),
         tree,
         vec![num],
         10,
         Some(hash.as_bytes().to_vec()),
-    )
-    .map(sse_matches);
+    );
+
+    let event_stream = async_stream::stream! {
+        while let Some(result) = query.recv().await {
+            yield sse_matches(result);
+        }
+    };
 
     Ok(warp::sse::reply(event_stream))
 }
 
 fn sse_matches(
     matches: Result<Vec<File>, tokio_postgres::Error>,
-) -> Result<impl warp::sse::ServerSentEvent, core::convert::Infallible> {
+) -> Result<warp::sse::Event, core::convert::Infallible> {
     let items = matches.unwrap();
 
-    Ok(warp::sse::json(items))
+    Ok(warp::sse::Event::default().json_data(items).unwrap())
 }
 
 pub async fn search_hashes(
@@ -298,6 +302,67 @@ pub async fn check_handle(opts: HandleOpts, db: Pool) -> Result<impl Reply, Reje
     };
 
     Ok(warp::reply::json(&exists))
+}
+
+pub async fn search_image_by_url(
+    opts: URLSearchOpts,
+    pool: Pool,
+    tree: Tree,
+    api_key: String,
+) -> Result<Box<dyn Reply>, Rejection> {
+    let url = opts.url;
+
+    let db = pool.get().await.map_err(map_bb8_err)?;
+
+    let image_remaining = rate_limit!(&api_key, &db, image_limit, "image");
+    let hash_remaining = rate_limit!(&api_key, &db, hash_limit, "hash");
+
+    let resp = match reqwest::get(&url).await {
+        Ok(resp) => resp,
+        Err(err) => return Ok(Box::new(warp::reply::json(&format!("Error: {}", err)))),
+    };
+
+    let bytes = match resp.bytes().await {
+        Ok(bytes) => bytes,
+        Err(err) => return Ok(Box::new(warp::reply::json(&format!("Error: {}", err)))),
+    };
+
+    let hash = tokio::task::spawn_blocking(move || {
+        let hasher = crate::get_hasher();
+        let image = image::load_from_memory(&bytes).unwrap();
+        hasher.hash_image(&image)
+    })
+    .instrument(span!(tracing::Level::TRACE, "hashing image"))
+    .await
+    .unwrap();
+
+    let hash: [u8; 8] = hash.as_bytes().try_into().unwrap();
+    let num = i64::from_be_bytes(hash);
+
+    let results = image_query(
+        pool.clone(),
+        tree.clone(),
+        vec![num],
+        3,
+        Some(hash.to_vec()),
+    )
+    .await
+    .unwrap();
+
+    let resp = warp::http::Response::builder()
+        .header("x-image-hash", num.to_string())
+        .header("x-rate-limit-total-image", image_remaining.1.to_string())
+        .header(
+            "x-rate-limit-remaining-image",
+            image_remaining.0.to_string(),
+        )
+        .header("x-rate-limit-total-hash", hash_remaining.1.to_string())
+        .header("x-rate-limit-remaining-hash", hash_remaining.0.to_string())
+        .header("content-type", "application/json")
+        .body(serde_json::to_string(&results).unwrap())
+        .unwrap();
+
+    Ok(Box::new(resp))
 }
 
 #[tracing::instrument]

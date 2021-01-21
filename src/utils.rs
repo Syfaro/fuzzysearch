@@ -7,7 +7,7 @@ macro_rules! rate_limit {
         rate_limit!($api_key, $db, $limit, $group, 1)
     };
 
-    ($api_key:expr, $db:expr, $limit:tt, $group:expr, $incr_by:expr) => {
+    ($api_key:expr, $db:expr, $limit:tt, $group:expr, $incr_by:expr) => {{
         let api_key = crate::models::lookup_api_key($api_key, $db)
             .await
             .ok_or_else(|| warp::reject::custom(Error::ApiKey))?;
@@ -17,10 +17,11 @@ macro_rules! rate_limit {
                 .await
                 .map_err(crate::handlers::map_postgres_err)?;
 
-        if rate_limit == crate::types::RateLimit::Limited {
-            return Err(warp::reject::custom(Error::RateLimit));
+        match rate_limit {
+            crate::types::RateLimit::Limited => return Err(warp::reject::custom(Error::RateLimit)),
+            crate::types::RateLimit::Available(count) => count,
         }
-    };
+    }};
 }
 
 /// Increment the rate limit for a group.
@@ -59,7 +60,10 @@ pub async fn update_rate_limit(
     if count > key_group_limit {
         Ok(RateLimit::Limited)
     } else {
-        Ok(RateLimit::Available(count))
+        Ok(RateLimit::Available((
+            key_group_limit - count,
+            key_group_limit,
+        )))
     }
 }
 
