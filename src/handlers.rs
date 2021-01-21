@@ -387,7 +387,7 @@ pub async fn search_image_by_url(
 }
 
 #[tracing::instrument]
-pub async fn handle_rejection(err: Rejection) -> Result<impl Reply, std::convert::Infallible> {
+pub async fn handle_rejection(err: Rejection) -> Result<Box<dyn Reply>, std::convert::Infallible> {
     warn!("had rejection");
 
     let (code, message) = if err.is_not_found() {
@@ -395,6 +395,10 @@ pub async fn handle_rejection(err: Rejection) -> Result<impl Reply, std::convert
             warp::http::StatusCode::NOT_FOUND,
             "This page does not exist",
         )
+    } else if err.find::<warp::reject::InvalidQuery>().is_some() {
+        return Ok(Box::new(Error::InvalidData) as Box<dyn Reply>)
+    } else if err.find::<warp::reject::MethodNotAllowed>().is_some() {
+        return Ok(Box::new(Error::InvalidData) as Box<dyn Reply>)
     } else {
         (
             warp::http::StatusCode::INTERNAL_SERVER_ERROR,
@@ -407,5 +411,5 @@ pub async fn handle_rejection(err: Rejection) -> Result<impl Reply, std::convert
         message: message.into(),
     });
 
-    Ok(warp::reply::with_status(json, code))
+    Ok(Box::new(warp::reply::with_status(json, code)))
 }
