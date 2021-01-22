@@ -106,8 +106,8 @@ pub async fn search_image(
 ) -> Result<Box<dyn Reply>, Rejection> {
     let db = early_return!(pool.get().await);
 
-    rate_limit!(&api_key, &db, image_limit, "image");
-    rate_limit!(&api_key, &db, hash_limit, "hash");
+    let image_remaining = rate_limit!(&api_key, &db, image_limit, "image");
+    let hash_remaining = rate_limit!(&api_key, &db, hash_limit, "hash");
 
     let (num, hash) = hash_input(form).await;
 
@@ -160,7 +160,20 @@ pub async fn search_image(
         matches: items,
     };
 
-    Ok(Box::new(warp::reply::json(&similarity)))
+    let resp = warp::http::Response::builder()
+        .header("x-image-hash", num.to_string())
+        .header("x-rate-limit-total-image", image_remaining.1.to_string())
+        .header(
+            "x-rate-limit-remaining-image",
+            image_remaining.0.to_string(),
+        )
+        .header("x-rate-limit-total-hash", hash_remaining.1.to_string())
+        .header("x-rate-limit-remaining-hash", hash_remaining.0.to_string())
+        .header("content-type", "application/json")
+        .body(serde_json::to_string(&similarity).unwrap())
+        .unwrap();
+
+    Ok(Box::new(resp))
 }
 
 pub async fn stream_image(
@@ -221,7 +234,7 @@ pub async fn search_hashes(
         return Ok(Box::new(Error::InvalidData));
     }
 
-    rate_limit!(&api_key, &db, image_limit, "image", hashes.len() as i16);
+    let image_remaining = rate_limit!(&api_key, &db, image_limit, "image", hashes.len() as i16);
 
     let mut results = image_query_sync(
         pool,
@@ -236,7 +249,17 @@ pub async fn search_hashes(
         matches.extend(early_return!(r));
     }
 
-    Ok(Box::new(warp::reply::json(&matches)))
+    let resp = warp::http::Response::builder()
+        .header("x-rate-limit-total-image", image_remaining.1.to_string())
+        .header(
+            "x-rate-limit-remaining-image",
+            image_remaining.0.to_string(),
+        )
+        .header("content-type", "application/json")
+        .body(serde_json::to_string(&matches).unwrap())
+        .unwrap();
+
+    Ok(Box::new(resp))
 }
 
 pub async fn search_file(
@@ -246,7 +269,7 @@ pub async fn search_file(
 ) -> Result<Box<dyn Reply>, Rejection> {
     let db = early_return!(db.get().await);
 
-    rate_limit!(&api_key, &db, name_limit, "file");
+    let file_remaining = rate_limit!(&api_key, &db, name_limit, "file");
 
     let (filter, val): (&'static str, &(dyn tokio_postgres::types::ToSql + Sync)) =
         if let Some(ref id) = opts.id {
@@ -303,7 +326,14 @@ pub async fn search_file(
     })
     .collect();
 
-    Ok(Box::new(warp::reply::json(&matches)))
+    let resp = warp::http::Response::builder()
+        .header("x-rate-limit-total-file", file_remaining.1.to_string())
+        .header("x-rate-limit-remaining-file", file_remaining.0.to_string())
+        .header("content-type", "application/json")
+        .body(serde_json::to_string(&matches).unwrap())
+        .unwrap();
+
+    Ok(Box::new(resp))
 }
 
 pub async fn check_handle(opts: HandleOpts, db: Pool) -> Result<Box<dyn Reply>, Rejection> {
@@ -396,9 +426,9 @@ pub async fn handle_rejection(err: Rejection) -> Result<Box<dyn Reply>, std::con
             "This page does not exist",
         )
     } else if err.find::<warp::reject::InvalidQuery>().is_some() {
-        return Ok(Box::new(Error::InvalidData) as Box<dyn Reply>)
+        return Ok(Box::new(Error::InvalidData) as Box<dyn Reply>);
     } else if err.find::<warp::reject::MethodNotAllowed>().is_some() {
-        return Ok(Box::new(Error::InvalidData) as Box<dyn Reply>)
+        return Ok(Box::new(Error::InvalidData) as Box<dyn Reply>);
     } else {
         (
             warp::http::StatusCode::INTERNAL_SERVER_ERROR,
