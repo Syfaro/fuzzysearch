@@ -60,7 +60,7 @@ impl From<tokio_postgres::Error> for Error {
 #[tracing::instrument(skip(form))]
 async fn hash_input(form: warp::multipart::FormData) -> (i64, img_hash::ImageHash<[u8; 8]>) {
     use bytes::BufMut;
-    use futures_util::StreamExt;
+    use futures::StreamExt;
 
     let parts: Vec<_> = form.collect().await;
     let mut parts = parts

@@ -500,7 +500,6 @@ dependencies = [
  "bytes",
  "chrono",
  "futures",
- "futures-util",
  "hamming",
  "hyper",
  "image",
