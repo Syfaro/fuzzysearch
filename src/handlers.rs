@@ -340,12 +340,12 @@ pub async fn search_image_by_url(
 
     let resp = match reqwest::get(&url).await {
         Ok(resp) => resp,
-        Err(err) => return Ok(Box::new(warp::reply::json(&format!("Error: {}", err)))),
+        Err(_err) => return Ok(Box::new(Error::InvalidData)),
     };
 
     let bytes = match resp.bytes().await {
         Ok(bytes) => bytes,
-        Err(err) => return Ok(Box::new(warp::reply::json(&format!("Error: {}", err)))),
+        Err(_err) => return Ok(Box::new(Error::InvalidData)),
     };
 
     let hash = tokio::task::spawn_blocking(move || {
