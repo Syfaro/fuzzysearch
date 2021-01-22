@@ -10,7 +10,9 @@ use warp::{Rejection, Reply};
 enum Error {
     BB8(bb8::RunError<tokio_postgres::Error>),
     Postgres(tokio_postgres::Error),
+    Reqwest(reqwest::Error),
     InvalidData,
+    InvalidImage,
     ApiKey,
     RateLimit,
 }
@@ -18,13 +20,17 @@ enum Error {
 impl warp::Reply for Error {
     fn into_response(self) -> warp::reply::Response {
         let msg = match self {
-            Error::BB8(_) | Error::Postgres(_) => ErrorMessage {
+            Error::BB8(_) | Error::Postgres(_) | Error::Reqwest(_) => ErrorMessage {
                 code: 500,
                 message: "Internal server error".to_string(),
             },
             Error::InvalidData => ErrorMessage {
                 code: 400,
                 message: "Invalid data provided".to_string(),
+            },
+            Error::InvalidImage => ErrorMessage {
+                code: 400,
+                message: "Invalid image provided".to_string(),
             },
             Error::ApiKey => ErrorMessage {
                 code: 401,
@@ -54,6 +60,12 @@ impl From<bb8::RunError<tokio_postgres::Error>> for Error {
 impl From<tokio_postgres::Error> for Error {
     fn from(err: tokio_postgres::Error) -> Self {
         Error::Postgres(err)
+    }
+}
+
+impl From<reqwest::Error> for Error {
+    fn from(err: reqwest::Error) -> Self {
+        Error::Reqwest(err)
     }
 }
 
@@ -206,6 +218,7 @@ pub async fn stream_image(
     Ok(Box::new(warp::sse::reply(event_stream)))
 }
 
+#[allow(clippy::unnecessary_wraps)]
 fn sse_matches(
     matches: Result<Vec<File>, tokio_postgres::Error>,
 ) -> Result<warp::sse::Event, core::convert::Infallible> {
@@ -361,6 +374,8 @@ pub async fn search_image_by_url(
     tree: Tree,
     api_key: String,
 ) -> Result<Box<dyn Reply>, Rejection> {
+    use bytes::BufMut;
+
     let url = opts.url;
 
     let db = early_return!(pool.get().await);
@@ -368,19 +383,38 @@ pub async fn search_image_by_url(
     let image_remaining = rate_limit!(&api_key, &db, image_limit, "image");
     let hash_remaining = rate_limit!(&api_key, &db, hash_limit, "hash");
 
-    let resp = match reqwest::get(&url).await {
+    let mut resp = match reqwest::get(&url).await {
         Ok(resp) => resp,
-        Err(_err) => return Ok(Box::new(Error::InvalidData)),
+        Err(_err) => return Ok(Box::new(Error::InvalidImage)),
     };
 
-    let bytes = match resp.bytes().await {
-        Ok(bytes) => bytes,
-        Err(_err) => return Ok(Box::new(Error::InvalidData)),
-    };
+    let content_length = resp
+        .headers()
+        .get("content-length")
+        .and_then(|len| {
+            String::from_utf8_lossy(len.as_bytes())
+                .parse::<usize>()
+                .ok()
+        })
+        .unwrap_or(0);
+
+    if content_length > 10_000_000 {
+        return Ok(Box::new(Error::InvalidImage));
+    }
+
+    let mut buf = bytes::BytesMut::with_capacity(content_length);
+
+    while let Some(chunk) = early_return!(resp.chunk().await) {
+        if buf.len() + chunk.len() > 10_000_000 {
+            return Ok(Box::new(Error::InvalidImage));
+        }
+
+        buf.put(chunk);
+    }
 
     let hash = tokio::task::spawn_blocking(move || {
         let hasher = crate::get_hasher();
-        let image = image::load_from_memory(&bytes).unwrap();
+        let image = image::load_from_memory(&buf).unwrap();
         hasher.hash_image(&image)
     })
     .instrument(span!(tracing::Level::TRACE, "hashing image"))

@@ -86,10 +86,10 @@ pub async fn update_rate_limit(
     }
 }
 
-pub fn extract_rows<'a>(
+pub fn extract_rows(
     rows: Vec<tokio_postgres::Row>,
-    hash: Option<&'a [u8]>,
-) -> impl IntoIterator<Item = File> + 'a {
+    hash: Option<&[u8]>,
+) -> impl IntoIterator<Item = File> + '_ {
     rows.into_iter().map(move |row| {
         let dbhash: i64 = row.get("hash");
         let dbbytes = dbhash.to_be_bytes();
