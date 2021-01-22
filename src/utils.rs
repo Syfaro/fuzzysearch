@@ -7,18 +7,38 @@ macro_rules! rate_limit {
         rate_limit!($api_key, $db, $limit, $group, 1)
     };
 
-    ($api_key:expr, $db:expr, $limit:tt, $group:expr, $incr_by:expr) => {
-        let api_key = crate::models::lookup_api_key($api_key, $db)
-            .await
-            .ok_or_else(|| warp::reject::custom(Error::ApiKey))?;
+    ($api_key:expr, $db:expr, $limit:tt, $group:expr, $incr_by:expr) => {{
+        let api_key = match crate::models::lookup_api_key($api_key, $db).await {
+            Some(api_key) => api_key,
+            None => return Ok(Box::new(Error::ApiKey)),
+        };
 
-        let rate_limit =
-            crate::utils::update_rate_limit($db, api_key.id, api_key.$limit, $group, $incr_by)
-                .await
-                .map_err(crate::handlers::map_postgres_err)?;
+        let rate_limit = match crate::utils::update_rate_limit(
+            $db,
+            api_key.id,
+            api_key.$limit,
+            $group,
+            $incr_by,
+        )
+        .await
+        {
+            Ok(rate_limit) => rate_limit,
+            Err(err) => return Ok(Box::new(Error::Postgres(err))),
+        };
 
-        if rate_limit == crate::types::RateLimit::Limited {
-            return Err(warp::reject::custom(Error::RateLimit));
+        match rate_limit {
+            crate::types::RateLimit::Limited => return Ok(Box::new(Error::RateLimit)),
+            crate::types::RateLimit::Available(count) => count,
+        }
+    }};
+}
+
+#[macro_export]
+macro_rules! early_return {
+    ($val:expr) => {
+        match $val {
+            Ok(val) => val,
+            Err(err) => return Ok(Box::new(Error::from(err))),
         }
     };
 }
@@ -59,14 +79,17 @@ pub async fn update_rate_limit(
     if count > key_group_limit {
         Ok(RateLimit::Limited)
     } else {
-        Ok(RateLimit::Available(count))
+        Ok(RateLimit::Available((
+            key_group_limit - count,
+            key_group_limit,
+        )))
     }
 }
 
-pub fn extract_rows<'a>(
+pub fn extract_rows(
     rows: Vec<tokio_postgres::Row>,
-    hash: Option<&'a [u8]>,
-) -> impl IntoIterator<Item = File> + 'a {
+    hash: Option<&[u8]>,
+) -> impl IntoIterator<Item = File> + '_ {
     rows.into_iter().map(move |row| {
         let dbhash: i64 = row.get("hash");
         let dbbytes = dbhash.to_be_bytes();

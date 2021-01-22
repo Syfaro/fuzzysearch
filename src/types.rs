@@ -20,7 +20,7 @@ pub enum RateLimit {
     /// This key is limited, we should deny the request.
     Limited,
     /// This key is available, contains the number of requests made.
-    Available(i16),
+    Available((i16, i16)),
 }
 
 /// A general type for every file.
@@ -111,4 +111,9 @@ pub struct HashSearchOpts {
 #[derive(Debug, Deserialize)]
 pub struct HandleOpts {
     pub twitter: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct URLSearchOpts {
+    pub url: String,
 }
