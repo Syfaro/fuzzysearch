@@ -37,4 +37,8 @@ steps:
       exclude:
       - master
 
+---
+kind: signature
+hmac: c17d371c096be4b0544aad509cd58fa475e8737ac2c2dd77db5603044e3a5892
+
 ...
