@@ -7,6 +7,14 @@ struct NeededPost {
     full_url: String,
 }
 
+fn get_hasher() -> img_hash::Hasher<[u8; 8]> {
+    img_hash::HasherConfig::with_bytes_type::<[u8; 8]>()
+        .hash_alg(img_hash::HashAlg::Gradient)
+        .hash_size(8, 8)
+        .preproc_dct()
+        .to_hasher()
+}
+
 async fn hash_url(
     id: i32,
     client: std::sync::Arc<reqwest::Client>,
@@ -21,7 +29,7 @@ async fn hash_url(
         .await
         .expect("unable to get bytes");
 
-    let hasher = furaffinity_rs::get_hasher();
+    let hasher = get_hasher();
     let image = match image::load_from_memory(&data) {
         Ok(image) => image,
         Err(e) => {
@@ -100,7 +108,7 @@ async fn main() {
 
         if needed_posts.is_empty() {
             println!("no posts, waiting a minute");
-            tokio::time::delay_for(std::time::Duration::from_secs(60)).await;
+            tokio::time::sleep(std::time::Duration::from_secs(60)).await;
             continue;
         }
 

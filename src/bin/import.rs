@@ -124,7 +124,7 @@ async fn main() {
         if elapsed < 1000 {
             let delay = 1000 - elapsed;
             println!("delaying {}ms before loading next page", delay);
-            tokio::time::delay_for(std::time::Duration::from_millis(delay)).await;
+            tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
         }
     }
 }
