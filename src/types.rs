@@ -114,6 +114,6 @@ pub struct HandleOpts {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct URLSearchOpts {
+pub struct UrlSearchOpts {
     pub url: String,
 }

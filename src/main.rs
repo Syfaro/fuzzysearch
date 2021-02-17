@@ -3,6 +3,7 @@
 use std::str::FromStr;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use warp::Filter;
 
 mod filters;
 mod handlers;
@@ -10,60 +11,8 @@ mod models;
 mod types;
 mod utils;
 
-use warp::Filter;
-
-fn configure_tracing() {
-    use opentelemetry::{
-        api::{KeyValue, Provider},
-        sdk::{Config, Sampler},
-    };
-    use tracing_subscriber::{layer::SubscriberExt, prelude::*};
-
-    let env = if cfg!(debug_assertions) {
-        "debug"
-    } else {
-        "release"
-    };
-
-    let fmt_layer = tracing_subscriber::fmt::layer();
-    let filter_layer = tracing_subscriber::EnvFilter::try_from_default_env()
-        .or_else(|_| tracing_subscriber::EnvFilter::try_new("info"))
-        .unwrap();
-    tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .finish();
-    let registry = tracing_subscriber::registry()
-        .with(filter_layer)
-        .with(fmt_layer);
-
-    let exporter = opentelemetry_jaeger::Exporter::builder()
-        .with_agent_endpoint(std::env::var("JAEGER_COLLECTOR").unwrap().parse().unwrap())
-        .with_process(opentelemetry_jaeger::Process {
-            service_name: "fuzzysearch".to_string(),
-            tags: vec![
-                KeyValue::new("environment", env),
-                KeyValue::new("version", env!("CARGO_PKG_VERSION")),
-            ],
-        })
-        .init()
-        .expect("unable to create jaeger exporter");
-
-    let provider = opentelemetry::sdk::Provider::builder()
-        .with_simple_exporter(exporter)
-        .with_config(Config {
-            default_sampler: Box::new(Sampler::Always),
-            ..Default::default()
-        })
-        .build();
-
-    opentelemetry::global::set_provider(provider);
-
-    let tracer = opentelemetry::global::trace_provider().get_tracer("fuzzysearch");
-    let telem_layer = tracing_opentelemetry::layer().with_tracer(tracer);
-    let registry = registry.with(telem_layer);
-
-    registry.init();
-}
+type Tree = Arc<RwLock<bk_tree::BKTree<Node, Hamming>>>;
+type Pool = bb8::Pool<bb8_postgres::PostgresConnectionManager<tokio_postgres::NoTls>>;
 
 #[derive(Debug)]
 pub struct Node {
@@ -76,8 +25,6 @@ impl Node {
         Self { id: -1, hash }
     }
 }
-
-type Tree = Arc<RwLock<bk_tree::BKTree<Node, Hamming>>>;
 
 pub struct Hamming;
 
@@ -198,7 +145,58 @@ async fn main() {
     warp::serve(routes).run(([0, 0, 0, 0], 8080)).await;
 }
 
-type Pool = bb8::Pool<bb8_postgres::PostgresConnectionManager<tokio_postgres::NoTls>>;
+fn configure_tracing() {
+    use opentelemetry::{
+        api::{KeyValue, Provider},
+        sdk::{Config, Sampler},
+    };
+    use tracing_subscriber::{layer::SubscriberExt, prelude::*};
+
+    let env = if cfg!(debug_assertions) {
+        "debug"
+    } else {
+        "release"
+    };
+
+    let fmt_layer = tracing_subscriber::fmt::layer();
+    let filter_layer = tracing_subscriber::EnvFilter::try_from_default_env()
+        .or_else(|_| tracing_subscriber::EnvFilter::try_new("info"))
+        .unwrap();
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .finish();
+    let registry = tracing_subscriber::registry()
+        .with(filter_layer)
+        .with(fmt_layer);
+
+    let exporter = opentelemetry_jaeger::Exporter::builder()
+        .with_agent_endpoint(std::env::var("JAEGER_COLLECTOR").unwrap().parse().unwrap())
+        .with_process(opentelemetry_jaeger::Process {
+            service_name: "fuzzysearch".to_string(),
+            tags: vec![
+                KeyValue::new("environment", env),
+                KeyValue::new("version", env!("CARGO_PKG_VERSION")),
+            ],
+        })
+        .init()
+        .expect("unable to create jaeger exporter");
+
+    let provider = opentelemetry::sdk::Provider::builder()
+        .with_simple_exporter(exporter)
+        .with_config(Config {
+            default_sampler: Box::new(Sampler::Always),
+            ..Default::default()
+        })
+        .build();
+
+    opentelemetry::global::set_provider(provider);
+
+    let tracer = opentelemetry::global::trace_provider().get_tracer("fuzzysearch");
+    let telem_layer = tracing_opentelemetry::layer().with_tracer(tracer);
+    let registry = registry.with(telem_layer);
+
+    registry.init();
+}
 
 fn get_hasher() -> img_hash::Hasher<[u8; 8]> {
     use img_hash::{HashAlg::Gradient, HasherConfig};

@@ -1,4 +1,4 @@
-use crate::models::DB;
+use crate::models::Db;
 use crate::types::*;
 
 #[macro_export]
@@ -51,7 +51,7 @@ macro_rules! early_return {
 /// joined requests.
 #[tracing::instrument(skip(db))]
 pub async fn update_rate_limit(
-    db: DB<'_>,
+    db: Db<'_>,
     key_id: i32,
     key_group_limit: i16,
     group_name: &'static str,

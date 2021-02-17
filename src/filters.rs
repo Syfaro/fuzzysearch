@@ -61,7 +61,7 @@ pub fn search_image_by_url(
 ) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
     warp::path("url")
         .and(warp::get())
-        .and(warp::query::<URLSearchOpts>())
+        .and(warp::query::<UrlSearchOpts>())
         .and(with_pool(db))
         .and(with_tree(tree))
         .and(with_api_key())

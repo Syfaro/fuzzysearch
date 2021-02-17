@@ -3,11 +3,11 @@ use crate::utils::extract_rows;
 use crate::{Pool, Tree};
 use tracing_futures::Instrument;
 
-pub type DB<'a> =
+pub type Db<'a> =
     &'a bb8::PooledConnection<'a, bb8_postgres::PostgresConnectionManager<tokio_postgres::NoTls>>;
 
 #[tracing::instrument(skip(db))]
-pub async fn lookup_api_key(key: &str, db: DB<'_>) -> Option<ApiKey> {
+pub async fn lookup_api_key(key: &str, db: Db<'_>) -> Option<ApiKey> {
     let rows = db
         .query(
             "SELECT

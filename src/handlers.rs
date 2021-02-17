@@ -8,7 +8,7 @@ use warp::{Rejection, Reply};
 
 #[derive(Debug)]
 enum Error {
-    BB8(bb8::RunError<tokio_postgres::Error>),
+    Bb8(bb8::RunError<tokio_postgres::Error>),
     Postgres(tokio_postgres::Error),
     Reqwest(reqwest::Error),
     InvalidData,
@@ -20,7 +20,7 @@ enum Error {
 impl warp::Reply for Error {
     fn into_response(self) -> warp::reply::Response {
         let msg = match self {
-            Error::BB8(_) | Error::Postgres(_) | Error::Reqwest(_) => ErrorMessage {
+            Error::Bb8(_) | Error::Postgres(_) | Error::Reqwest(_) => ErrorMessage {
                 code: 500,
                 message: "Internal server error".to_string(),
             },
@@ -53,7 +53,7 @@ impl warp::Reply for Error {
 
 impl From<bb8::RunError<tokio_postgres::Error>> for Error {
     fn from(err: bb8::RunError<tokio_postgres::Error>) -> Self {
-        Error::BB8(err)
+        Error::Bb8(err)
     }
 }
 
@@ -369,7 +369,7 @@ pub async fn check_handle(opts: HandleOpts, db: Pool) -> Result<Box<dyn Reply>, 
 }
 
 pub async fn search_image_by_url(
-    opts: URLSearchOpts,
+    opts: UrlSearchOpts,
     pool: Pool,
     tree: Tree,
     api_key: String,
