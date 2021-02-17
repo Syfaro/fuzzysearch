@@ -8,8 +8,7 @@ use warp::{Rejection, Reply};
 
 #[derive(Debug)]
 enum Error {
-    Bb8(bb8::RunError<tokio_postgres::Error>),
-    Postgres(tokio_postgres::Error),
+    Postgres(sqlx::Error),
     Reqwest(reqwest::Error),
     InvalidData,
     InvalidImage,
@@ -20,7 +19,7 @@ enum Error {
 impl warp::Reply for Error {
     fn into_response(self) -> warp::reply::Response {
         let msg = match self {
-            Error::Bb8(_) | Error::Postgres(_) | Error::Reqwest(_) => ErrorMessage {
+            Error::Postgres(_) | Error::Reqwest(_) => ErrorMessage {
                 code: 500,
                 message: "Internal server error".to_string(),
             },
@@ -51,14 +50,8 @@ impl warp::Reply for Error {
     }
 }
 
-impl From<bb8::RunError<tokio_postgres::Error>> for Error {
-    fn from(err: bb8::RunError<tokio_postgres::Error>) -> Self {
-        Error::Bb8(err)
-    }
-}
-
-impl From<tokio_postgres::Error> for Error {
-    fn from(err: tokio_postgres::Error) -> Self {
+impl From<sqlx::Error> for Error {
+    fn from(err: sqlx::Error) -> Self {
         Error::Postgres(err)
     }
 }
@@ -112,12 +105,10 @@ async fn hash_input(form: warp::multipart::FormData) -> (i64, img_hash::ImageHas
 pub async fn search_image(
     form: warp::multipart::FormData,
     opts: ImageSearchOpts,
-    pool: Pool,
+    db: Pool,
     tree: Tree,
     api_key: String,
 ) -> Result<Box<dyn Reply>, Rejection> {
-    let db = early_return!(pool.get().await);
-
     let image_remaining = rate_limit!(&api_key, &db, image_limit, "image");
     let hash_remaining = rate_limit!(&api_key, &db, hash_limit, "hash");
 
@@ -126,7 +117,7 @@ pub async fn search_image(
     let mut items = {
         if opts.search_type == Some(ImageSearchType::Force) {
             image_query(
-                pool.clone(),
+                db.clone(),
                 tree.clone(),
                 vec![num],
                 10,
@@ -136,7 +127,7 @@ pub async fn search_image(
             .unwrap()
         } else {
             let results = image_query(
-                pool.clone(),
+                db.clone(),
                 tree.clone(),
                 vec![num],
                 0,
@@ -146,7 +137,7 @@ pub async fn search_image(
             .unwrap();
             if results.is_empty() && opts.search_type != Some(ImageSearchType::Exact) {
                 image_query(
-                    pool.clone(),
+                    db.clone(),
                     tree.clone(),
                     vec![num],
                     10,
@@ -194,10 +185,8 @@ pub async fn stream_image(
     tree: Tree,
     api_key: String,
 ) -> Result<Box<dyn Reply>, Rejection> {
-    let db = early_return!(pool.get().await);
-
-    rate_limit!(&api_key, &db, image_limit, "image", 2);
-    rate_limit!(&api_key, &db, hash_limit, "hash");
+    rate_limit!(&api_key, &pool, image_limit, "image", 2);
+    rate_limit!(&api_key, &pool, hash_limit, "hash");
 
     let (num, hash) = hash_input(form).await;
 
@@ -220,7 +209,7 @@ pub async fn stream_image(
 
 #[allow(clippy::unnecessary_wraps)]
 fn sse_matches(
-    matches: Result<Vec<File>, tokio_postgres::Error>,
+    matches: Result<Vec<File>, sqlx::Error>,
 ) -> Result<warp::sse::Event, core::convert::Infallible> {
     let items = matches.unwrap();
 
@@ -234,7 +223,6 @@ pub async fn search_hashes(
     api_key: String,
 ) -> Result<Box<dyn Reply>, Rejection> {
     let pool = db.clone();
-    let db = early_return!(db.get().await);
 
     let hashes: Vec<i64> = opts
         .hashes
@@ -280,64 +268,95 @@ pub async fn search_file(
     db: Pool,
     api_key: String,
 ) -> Result<Box<dyn Reply>, Rejection> {
-    let db = early_return!(db.get().await);
+    use sqlx::Row;
 
     let file_remaining = rate_limit!(&api_key, &db, name_limit, "file");
 
-    let (filter, val): (&'static str, &(dyn tokio_postgres::types::ToSql + Sync)) =
-        if let Some(ref id) = opts.id {
-            ("file_id = $1", id)
-        } else if let Some(ref name) = opts.name {
-            ("lower(filename) = lower($1)", name)
-        } else if let Some(ref url) = opts.url {
-            ("lower(url) = lower($1)", url)
-        } else {
-            return Ok(Box::new(Error::InvalidData));
-        };
+    let query = if let Some(ref id) = opts.id {
+        sqlx::query(
+            "SELECT
+                    submission.id,
+                    submission.url,
+                    submission.filename,
+                    submission.file_id,
+                    artist.name,
+                    hashes.id hash_id
+                FROM
+                    submission
+                JOIN artist
+                    ON artist.id = submission.artist_id
+                JOIN hashes
+                    ON hashes.furaffinity_id = submission.id
+                WHERE
+                    file_id = $1
+                LIMIT 10",
+        )
+        .bind(id)
+    } else if let Some(ref name) = opts.name {
+        sqlx::query(
+            "SELECT
+                    submission.id,
+                    submission.url,
+                    submission.filename,
+                    submission.file_id,
+                    artist.name,
+                    hashes.id hash_id
+                FROM
+                    submission
+                JOIN artist
+                    ON artist.id = submission.artist_id
+                JOIN hashes
+                    ON hashes.furaffinity_id = submission.id
+                WHERE
+                    lower(filename) = lower($1)
+                LIMIT 10",
+        )
+        .bind(name)
+    } else if let Some(ref url) = opts.url {
+        sqlx::query(
+            "SELECT
+                    submission.id,
+                    submission.url,
+                    submission.filename,
+                    submission.file_id,
+                    artist.name,
+                    hashes.id hash_id
+                FROM
+                    submission
+                JOIN artist
+                    ON artist.id = submission.artist_id
+                JOIN hashes
+                    ON hashes.furaffinity_id = submission.id
+                WHERE
+                    lower(url) = lower($1)
+                LIMIT 10",
+        )
+        .bind(url)
+    } else {
+        return Ok(Box::new(Error::InvalidData));
+    };
 
-    let query = format!(
-        "SELECT
-            submission.id,
-            submission.url,
-            submission.filename,
-            submission.file_id,
-            artist.name,
-            hashes.id hash_id
-        FROM
-            submission
-        JOIN artist
-            ON artist.id = submission.artist_id
-        JOIN hashes
-            ON hashes.furaffinity_id = submission.id
-        WHERE
-            {}
-        LIMIT 10",
-        filter
-    );
+    let matches: Result<Vec<File>, _> = query
+        .map(|row| File {
+            id: row.get("hash_id"),
+            site_id: row.get::<i32, _>("id") as i64,
+            site_id_str: row.get::<i32, _>("id").to_string(),
+            url: row.get("url"),
+            filename: row.get("filename"),
+            artists: row
+                .get::<Option<String>, _>("name")
+                .map(|artist| vec![artist]),
+            distance: None,
+            hash: None,
+            site_info: Some(SiteInfo::FurAffinity(FurAffinityFile {
+                file_id: row.get("file_id"),
+            })),
+            searched_hash: None,
+        })
+        .fetch_all(&db)
+        .await;
 
-    let matches: Vec<_> = early_return!(
-        db.query::<str>(&*query, &[val])
-            .instrument(span!(tracing::Level::TRACE, "waiting for db"))
-            .await
-    )
-    .into_iter()
-    .map(|row| File {
-        id: row.get("hash_id"),
-        site_id: row.get::<&str, i32>("id") as i64,
-        site_id_str: row.get::<&str, i32>("id").to_string(),
-        url: row.get("url"),
-        filename: row.get("filename"),
-        artists: row
-            .get::<&str, Option<String>>("name")
-            .map(|artist| vec![artist]),
-        distance: None,
-        hash: None,
-        site_info: Some(SiteInfo::FurAffinity(FurAffinityFile {
-            file_id: row.get("file_id"),
-        })),
-        searched_hash: None,
-    })
-    .collect();
+    let matches = early_return!(matches);
 
     let resp = warp::http::Response::builder()
         .header("x-rate-limit-total-file", file_remaining.1.to_string())
@@ -350,17 +369,13 @@ pub async fn search_file(
 }
 
 pub async fn check_handle(opts: HandleOpts, db: Pool) -> Result<Box<dyn Reply>, Rejection> {
-    let db = early_return!(db.get().await);
-
     let exists = if let Some(handle) = opts.twitter {
-        !early_return!(
-            db.query(
-                "SELECT 1 FROM twitter_user WHERE lower(data->>'screen_name') = lower($1)",
-                &[&handle],
-            )
+        let result = sqlx::query_scalar!("SELECT exists(SELECT 1 FROM twitter_user WHERE lower(data->>'screen_name') = lower($1))", handle)
+            .fetch_optional(&db)
             .await
-        )
-        .is_empty()
+            .map(|row| row.flatten().unwrap_or(false));
+
+        early_return!(result)
     } else {
         false
     };
@@ -370,15 +385,13 @@ pub async fn check_handle(opts: HandleOpts, db: Pool) -> Result<Box<dyn Reply>, 
 
 pub async fn search_image_by_url(
     opts: UrlSearchOpts,
-    pool: Pool,
+    db: Pool,
     tree: Tree,
     api_key: String,
 ) -> Result<Box<dyn Reply>, Rejection> {
     use bytes::BufMut;
 
     let url = opts.url;
-
-    let db = early_return!(pool.get().await);
 
     let image_remaining = rate_limit!(&api_key, &db, image_limit, "image");
     let hash_remaining = rate_limit!(&api_key, &db, hash_limit, "hash");
@@ -424,15 +437,9 @@ pub async fn search_image_by_url(
     let hash: [u8; 8] = hash.as_bytes().try_into().unwrap();
     let num = i64::from_be_bytes(hash);
 
-    let results = image_query(
-        pool.clone(),
-        tree.clone(),
-        vec![num],
-        3,
-        Some(hash.to_vec()),
-    )
-    .await
-    .unwrap();
+    let results = image_query(db.clone(), tree.clone(), vec![num], 3, Some(hash.to_vec()))
+        .await
+        .unwrap();
 
     let resp = warp::http::Response::builder()
         .header("x-image-hash", num.to_string())

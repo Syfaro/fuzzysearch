@@ -28,9 +28,7 @@ warp = "0.3"
 reqwest = "0.11"
 hyper = "0.14"
 
-tokio-postgres = "0.7"
-bb8 = "0.7"
-bb8-postgres = "0.7"
+sqlx = { version = "0.5", features = ["runtime-tokio-native-tls", "postgres", "macros", "json", "offline"] }
 
 img_hash = "3"
 image = "0.23"

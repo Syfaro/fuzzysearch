@@ -1,44 +1,31 @@
 use crate::types::*;
-use crate::utils::extract_rows;
 use crate::{Pool, Tree};
 use tracing_futures::Instrument;
 
-pub type Db<'a> =
-    &'a bb8::PooledConnection<'a, bb8_postgres::PostgresConnectionManager<tokio_postgres::NoTls>>;
-
 #[tracing::instrument(skip(db))]
-pub async fn lookup_api_key(key: &str, db: Db<'_>) -> Option<ApiKey> {
-    let rows = db
-        .query(
-            "SELECT
+pub async fn lookup_api_key(key: &str, db: &sqlx::PgPool) -> Option<ApiKey> {
+    sqlx::query_as!(
+        ApiKey,
+        "SELECT
             api_key.id,
             api_key.name_limit,
             api_key.image_limit,
             api_key.hash_limit,
             api_key.name,
-            account.email
+            account.email owner_email
         FROM
             api_key
         JOIN account
             ON account.id = api_key.user_id
         WHERE
-            api_key.key = $1",
-            &[&key],
-        )
-        .await
-        .expect("Unable to query API keys");
-
-    match rows.into_iter().next() {
-        Some(row) => Some(ApiKey {
-            id: row.get(0),
-            name_limit: row.get(1),
-            image_limit: row.get(2),
-            hash_limit: row.get(3),
-            name: row.get(4),
-            owner_email: row.get(5),
-        }),
-        _ => None,
-    }
+            api_key.key = $1
+    ",
+        key
+    )
+    .fetch_optional(db)
+    .await
+    .ok()
+    .flatten()
 }
 
 #[tracing::instrument(skip(pool, tree))]
@@ -48,7 +35,7 @@ pub async fn image_query(
     hashes: Vec<i64>,
     distance: i64,
     hash: Option<Vec<u8>>,
-) -> Result<Vec<File>, tokio_postgres::Error> {
+) -> Result<Vec<File>, sqlx::Error> {
     let mut results = image_query_sync(pool, tree, hashes, distance, hash);
     let mut matches = Vec::new();
 
@@ -66,19 +53,26 @@ pub fn image_query_sync(
     hashes: Vec<i64>,
     distance: i64,
     hash: Option<Vec<u8>>,
-) -> tokio::sync::mpsc::Receiver<Result<Vec<File>, tokio_postgres::Error>> {
+) -> tokio::sync::mpsc::Receiver<Result<Vec<File>, sqlx::Error>> {
     let (tx, rx) = tokio::sync::mpsc::channel(50);
 
     tokio::spawn(async move {
-        let db = pool.get().await.unwrap();
+        let db = pool;
 
         for query_hash in hashes {
+            let mut seen = std::collections::HashSet::new();
+
             let node = crate::Node::query(query_hash.to_be_bytes());
             let lock = tree.read().await;
             let items = lock.find(&node, distance as u64);
 
-            for (_dist, item) in items {
-                let query = db.query("SELECT
+            for (dist, item) in items {
+                if seen.contains(&item.id) {
+                    continue;
+                }
+                seen.insert(item.id);
+
+                let row = sqlx::query!("SELECT
                         hashes.id,
                         hashes.hash,
                         hashes.furaffinity_id,
@@ -131,14 +125,44 @@ pub fn image_query_sync(
                         tweet_media.hash <@ (hashes.hash, 0)
                     LIMIT 1
                 ) tm ON hashes.twitter_id IS NOT NULL
-                WHERE hashes.id = $1", &[&item.id]).await;
-                let rows = query.map(|rows| {
-                    extract_rows(rows, hash.as_deref()).into_iter().map(|mut file| {
-                        file.searched_hash = Some(query_hash);
-                        file
-                    }).collect()
-                });
-                tx.send(rows).await.unwrap();
+                WHERE hashes.id = $1", item.id).map(|row| {
+                    let (site_id, site_info) = if let Some(fa_id) = row.furaffinity_id {
+                        (
+                            fa_id as i64,
+                            Some(SiteInfo::FurAffinity(FurAffinityFile {
+                                file_id: row.file_id.unwrap(),
+                            }))
+                        )
+                    } else if let Some(e621_id) = row.e621_id {
+                        (
+                            e621_id as i64,
+                            Some(SiteInfo::E621(E621File {
+                                sources: row.sources,
+                            }))
+                        )
+                    } else if let Some(twitter_id) = row.twitter_id {
+                        (twitter_id, Some(SiteInfo::Twitter))
+                    } else {
+                        (-1, None)
+                    };
+
+                    let file = File {
+                        id: row.id,
+                        site_id,
+                        site_info,
+                        site_id_str: site_id.to_string(),
+                        url: row.url.unwrap_or_default(),
+                        hash: Some(row.hash),
+                        distance: Some(dist),
+                        artists: row.artists,
+                        filename: row.filename.unwrap_or_default(),
+                        searched_hash: Some(query_hash),
+                    };
+
+                    vec![file]
+                }).fetch_one(&db).await;
+
+                tx.send(row).await.unwrap();
             }
         }
     }.in_current_span());
