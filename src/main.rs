@@ -1,6 +1,5 @@
 #![recursion_limit = "256"]
 
-use std::str::FromStr;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use warp::Filter;
@@ -12,7 +11,7 @@ mod types;
 mod utils;
 
 type Tree = Arc<RwLock<bk_tree::BKTree<Node, Hamming>>>;
-type Pool = bb8::Pool<bb8_postgres::PostgresConnectionManager<tokio_postgres::NoTls>>;
+type Pool = sqlx::PgPool;
 
 #[derive(Debug)]
 pub struct Node {
@@ -38,93 +37,15 @@ impl bk_tree::Metric<Node> for Hamming {
 async fn main() {
     configure_tracing();
 
-    let s = std::env::var("POSTGRES_DSN").expect("Missing POSTGRES_DSN");
+    let s = std::env::var("DATABASE_URL").expect("Missing DATABASE_URL");
 
-    let manager = bb8_postgres::PostgresConnectionManager::new(
-        tokio_postgres::Config::from_str(&s).expect("Invalid POSTGRES_DSN"),
-        tokio_postgres::NoTls,
-    );
-
-    let db_pool = bb8::Pool::builder()
-        .build(manager)
+    let db_pool = sqlx::PgPool::connect(&s)
         .await
-        .expect("Unable to build Postgres pool");
+        .expect("Unable to create Postgres pool");
 
     let tree: Tree = Arc::new(RwLock::new(bk_tree::BKTree::new(Hamming)));
 
-    let mut max_id = 0;
-
-    let conn = db_pool.get().await.unwrap();
-    let mut lock = tree.write().await;
-    conn.query("SELECT id, hash FROM hashes", &[])
-        .await
-        .unwrap()
-        .into_iter()
-        .for_each(|row| {
-            let id: i32 = row.get(0);
-            let hash: i64 = row.get(1);
-            let bytes = hash.to_be_bytes();
-
-            if id > max_id {
-                max_id = id;
-            }
-
-            lock.add(Node { id, hash: bytes });
-        });
-    drop(lock);
-    drop(conn);
-
-    let tree_clone = tree.clone();
-    let pool_clone = db_pool.clone();
-    tokio::spawn(async move {
-        use futures::StreamExt;
-
-        let max_id = std::sync::atomic::AtomicI32::new(max_id);
-        let tree = tree_clone;
-        let pool = pool_clone;
-
-        let order = std::sync::atomic::Ordering::SeqCst;
-
-        let interval = async_stream::stream! {
-            let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
-
-            while let item = interval.tick().await {
-                yield item;
-            }
-        };
-
-        interval
-            .for_each(|_| async {
-                tracing::debug!("Refreshing hashes");
-
-                let conn = pool.get().await.unwrap();
-                let mut lock = tree.write().await;
-                let id = max_id.load(order);
-
-                let mut count: usize = 0;
-
-                conn.query("SELECT id, hash FROM hashes WHERE hashes.id > $1", &[&id])
-                    .await
-                    .unwrap()
-                    .into_iter()
-                    .for_each(|row| {
-                        let id: i32 = row.get(0);
-                        let hash: i64 = row.get(1);
-                        let bytes = hash.to_be_bytes();
-
-                        if id > max_id.load(order) {
-                            max_id.store(id, order);
-                        }
-
-                        lock.add(Node { id, hash: bytes });
-
-                        count += 1;
-                    });
-
-                tracing::trace!("Added {} new hashes", count);
-            })
-            .await;
-    });
+    load_updates(db_pool.clone(), tree.clone()).await;
 
     let log = warp::log("fuzzysearch");
     let cors = warp::cors()
@@ -196,6 +117,69 @@ fn configure_tracing() {
     let registry = registry.with(telem_layer);
 
     registry.init();
+}
+
+#[derive(serde::Deserialize)]
+struct HashRow {
+    id: i32,
+    hash: i64,
+}
+
+async fn create_tree(conn: &Pool) -> bk_tree::BKTree<Node, Hamming> {
+    use futures::TryStreamExt;
+
+    let mut tree = bk_tree::BKTree::new(Hamming);
+
+    let mut rows = sqlx::query_as!(HashRow, "SELECT id, hash FROM hashes").fetch(conn);
+
+    while let Some(row) = rows.try_next().await.expect("Unable to get row") {
+        tree.add(Node {
+            id: row.id,
+            hash: row.hash.to_be_bytes(),
+        })
+    }
+
+    tree
+}
+
+async fn load_updates(conn: Pool, tree: Tree) {
+    let mut listener = sqlx::postgres::PgListener::connect_with(&conn)
+        .await
+        .unwrap();
+    listener.listen("fuzzysearch_hash_added").await.unwrap();
+
+    let new_tree = create_tree(&conn).await;
+    let mut lock = tree.write().await;
+    *lock = new_tree;
+    drop(lock);
+
+    tokio::spawn(async move {
+        loop {
+            while let Some(notification) = listener
+                .try_recv()
+                .await
+                .expect("Unable to recv notification")
+            {
+                let payload: HashRow = serde_json::from_str(notification.payload()).unwrap();
+                tracing::debug!(id = payload.id, "Adding new hash to tree");
+
+                let mut lock = tree.write().await;
+                lock.add(Node {
+                    id: payload.id,
+                    hash: payload.hash.to_be_bytes(),
+                });
+                drop(lock);
+            }
+
+            tracing::error!("Lost connection to Postgres, recreating tree");
+            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+            let new_tree = create_tree(&conn).await;
+            let mut lock = tree.write().await;
+            *lock = new_tree;
+            drop(lock);
+            tracing::info!("Replaced tree");
+        }
+    });
 }
 
 fn get_hasher() -> img_hash::Hasher<[u8; 8]> {

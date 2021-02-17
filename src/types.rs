@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 pub struct ApiKey {
     pub id: i32,
     pub name: Option<String>,
-    pub owner_email: Option<String>,
+    pub owner_email: String,
     pub name_limit: i16,
     pub image_limit: i16,
     pub hash_limit: i16,

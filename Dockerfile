@@ -1,5 +1,6 @@
 FROM rust:1-slim AS builder
 WORKDIR /src
+ENV SQLX_OFFLINE=true
 RUN apt-get update -y && apt-get install -y libssl-dev pkg-config
 COPY . .
 RUN cargo install --root / --path .
