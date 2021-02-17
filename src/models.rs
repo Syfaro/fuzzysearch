@@ -59,9 +59,9 @@ pub fn image_query_sync(
     tokio::spawn(async move {
         let db = pool;
 
-        let mut seen = std::collections::HashSet::new();
-
         for query_hash in hashes {
+            let mut seen = std::collections::HashSet::new();
+
             let node = crate::Node::query(query_hash.to_be_bytes());
             let lock = tree.read().await;
             let items = lock.find(&node, distance as u64);
