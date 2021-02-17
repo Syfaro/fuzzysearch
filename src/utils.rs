@@ -1,4 +1,15 @@
 use crate::types::*;
+use lazy_static::lazy_static;
+use prometheus::{register_int_counter_vec, IntCounterVec};
+
+lazy_static! {
+    pub static ref RATE_LIMIT_STATUS: IntCounterVec = register_int_counter_vec!(
+        "fuzzysearch_api_rate_limit_count",
+        "Number of allowed and rate limited requests",
+        &["status"]
+    )
+    .unwrap();
+}
 
 #[macro_export]
 macro_rules! rate_limit {
@@ -26,8 +37,18 @@ macro_rules! rate_limit {
         };
 
         match rate_limit {
-            crate::types::RateLimit::Limited => return Ok(Box::new(Error::RateLimit)),
-            crate::types::RateLimit::Available(count) => count,
+            crate::types::RateLimit::Limited => {
+                crate::utils::RATE_LIMIT_STATUS
+                    .with_label_values(&["limited"])
+                    .inc();
+                return Ok(Box::new(Error::RateLimit));
+            }
+            crate::types::RateLimit::Available(count) => {
+                crate::utils::RATE_LIMIT_STATUS
+                    .with_label_values(&["allowed"])
+                    .inc();
+                count
+            }
         }
     }};
 }

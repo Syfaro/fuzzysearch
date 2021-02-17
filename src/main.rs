@@ -43,6 +43,8 @@ async fn main() {
         .await
         .expect("Unable to create Postgres pool");
 
+    serve_metrics().await;
+
     let tree: Tree = Arc::new(RwLock::new(bk_tree::BKTree::new(Hamming)));
 
     load_updates(db_pool.clone(), tree.clone()).await;
@@ -117,6 +119,43 @@ fn configure_tracing() {
     let registry = registry.with(telem_layer);
 
     registry.init();
+}
+
+async fn metrics(
+    _: hyper::Request<hyper::Body>,
+) -> Result<hyper::Response<hyper::Body>, std::convert::Infallible> {
+    use hyper::{Body, Response};
+    use prometheus::{Encoder, TextEncoder};
+
+    let mut buffer = Vec::new();
+    let encoder = TextEncoder::new();
+
+    let metric_families = prometheus::gather();
+    encoder.encode(&metric_families, &mut buffer).unwrap();
+
+    Ok(Response::new(Body::from(buffer)))
+}
+
+async fn serve_metrics() {
+    use hyper::{
+        service::{make_service_fn, service_fn},
+        Server,
+    };
+    use std::convert::Infallible;
+    use std::net::SocketAddr;
+
+    let make_svc = make_service_fn(|_conn| async { Ok::<_, Infallible>(service_fn(metrics)) });
+
+    let addr: SocketAddr = std::env::var("METRICS_HOST")
+        .expect("Missing METRICS_HOST")
+        .parse()
+        .expect("Invalid METRICS_HOST");
+
+    let server = Server::bind(&addr).serve(make_svc);
+
+    tokio::spawn(async move {
+        server.await.expect("Metrics server error");
+    });
 }
 
 #[derive(serde::Deserialize)]

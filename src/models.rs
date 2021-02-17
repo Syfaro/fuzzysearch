@@ -1,6 +1,21 @@
 use crate::types::*;
 use crate::{Pool, Tree};
+use lazy_static::lazy_static;
+use prometheus::{register_histogram, Histogram};
 use tracing_futures::Instrument;
+
+lazy_static! {
+    static ref IMAGE_LOOKUP_DURATION: Histogram = register_histogram!(
+        "fuzzysearch_api_image_lookup_seconds",
+        "Duration to perform an image lookup"
+    )
+    .unwrap();
+    static ref IMAGE_QUERY_DURATION: Histogram = register_histogram!(
+        "fuzzysearch_api_image_query_seconds",
+        "Duration to perform a single image lookup query"
+    )
+    .unwrap();
+}
 
 #[tracing::instrument(skip(db))]
 pub async fn lookup_api_key(key: &str, db: &sqlx::PgPool) -> Option<ApiKey> {
@@ -62,6 +77,8 @@ pub fn image_query_sync(
         for query_hash in hashes {
             let mut seen = std::collections::HashSet::new();
 
+            let _timer = IMAGE_LOOKUP_DURATION.start_timer();
+
             let node = crate::Node::query(query_hash.to_be_bytes());
             let lock = tree.read().await;
             let items = lock.find(&node, distance as u64);
@@ -71,6 +88,8 @@ pub fn image_query_sync(
                     continue;
                 }
                 seen.insert(item.id);
+
+                let _timer = IMAGE_QUERY_DURATION.start_timer();
 
                 let row = sqlx::query!("SELECT
                         hashes.id,
