@@ -5,20 +5,25 @@ authors = ["Syfaro <syfaro@huefox.com>"]
 edition = "2018"
 
 [dependencies]
-reqwest = { version = "0.11", features = ["json"] }
 tokio = { version = "1", features = ["full"] }
-futures = { version = "0.3", features = ["thread-pool"] }
-hamming = "0.1.3"
+
+hyper = { version = "0.14", features = ["server"] }
+reqwest = { version = "0.11", features = ["json"] }
 
 serde = "1"
 serde_json = "1"
 
-tokio-postgres = { version = "0.7", features = ["with-serde_json-1"] }
-bb8 = "0.7"
-bb8-postgres = "0.7"
+sqlx = { version = "0.5", features = ["runtime-tokio-native-tls", "postgres", "macros", "json", "offline"] }
 
 image = "0.23"
+hamming = "0.1.3"
 img_hash = "3"
+sha2 = "0.9"
 
-[profile.dev.package."*"]
-opt-level = 2
+tracing = "0.1"
+tracing-subscriber = "0.2"
+
+anyhow = "1"
+
+lazy_static = "1"
+prometheus = { version = "0.11", features = ["process"] }

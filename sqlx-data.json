@@ -1,0 +1,37 @@
+{
+  "db": "PostgreSQL",
+  "02b98e35cf7d650413c2730df732d7ae08119b11a5b2aaddcee08a7f06338924": {
+    "query": "SELECT max(id) max FROM e621",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "max",
+          "type_info": "Int4"
+        }
+      ],
+      "parameters": {
+        "Left": []
+      },
+      "nullable": [
+        null
+      ]
+    }
+  },
+  "a054594f7844f32e5968a54c0dab59716149a10411fcb16184a9070a82bb287d": {
+    "query": "INSERT INTO e621\n            (id, data, hash, hash_error, sha256) VALUES\n            ($1, $2, $3, $4, $5)\n            ON CONFLICT (id) DO UPDATE SET\n                data = EXCLUDED.data,\n                hash = EXCLUDED.hash,\n                hash_error = EXCLUDED.hash_error,\n                sha256 = EXCLUDED.sha256",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Left": [
+          "Int4",
+          "Jsonb",
+          "Int8",
+          "Text",
+          "Bytea"
+        ]
+      },
+      "nullable": []
+    }
+  }
+}
