@@ -1,10 +1,30 @@
 use crate::models::{image_query, image_query_sync};
 use crate::types::*;
 use crate::{early_return, rate_limit, Pool, Tree};
+use lazy_static::lazy_static;
+use prometheus::{register_histogram, register_int_counter, Histogram, IntCounter};
 use std::convert::TryInto;
 use tracing::{span, warn};
 use tracing_futures::Instrument;
 use warp::{Rejection, Reply};
+
+lazy_static! {
+    static ref IMAGE_HASH_DURATION: Histogram = register_histogram!(
+        "fuzzysearch_api_image_hash_seconds",
+        "Duration to perform an image hash operation"
+    )
+    .unwrap();
+    static ref IMAGE_URL_DOWNLOAD_DURATION: Histogram = register_histogram!(
+        "fuzzysearch_api_image_url_download_seconds",
+        "Duration to download an image from a provided URL"
+    )
+    .unwrap();
+    static ref UNHANDLED_REJECTIONS: IntCounter = register_int_counter!(
+        "fuzzysearch_api_unhandled_rejections_count",
+        "Number of unhandled HTTP rejections"
+    )
+    .unwrap();
+}
 
 #[derive(Debug)]
 enum Error {
@@ -87,6 +107,7 @@ async fn hash_input(form: warp::multipart::FormData) -> (i64, img_hash::ImageHas
 
     let len = bytes.len();
 
+    let _timer = IMAGE_HASH_DURATION.start_timer();
     let hash = tokio::task::spawn_blocking(move || {
         let hasher = crate::get_hasher();
         let image = image::load_from_memory(&bytes).unwrap();
@@ -95,6 +116,7 @@ async fn hash_input(form: warp::multipart::FormData) -> (i64, img_hash::ImageHas
     .instrument(span!(tracing::Level::TRACE, "hashing image", len))
     .await
     .unwrap();
+    drop(_timer);
 
     let mut buf: [u8; 8] = [0; 8];
     buf.copy_from_slice(&hash.as_bytes());
@@ -396,6 +418,8 @@ pub async fn search_image_by_url(
     let image_remaining = rate_limit!(&api_key, &db, image_limit, "image");
     let hash_remaining = rate_limit!(&api_key, &db, hash_limit, "hash");
 
+    let _timer = IMAGE_URL_DOWNLOAD_DURATION.start_timer();
+
     let mut resp = match reqwest::get(&url).await {
         Ok(resp) => resp,
         Err(_err) => return Ok(Box::new(Error::InvalidImage)),
@@ -425,6 +449,9 @@ pub async fn search_image_by_url(
         buf.put(chunk);
     }
 
+    drop(_timer);
+
+    let _timer = IMAGE_HASH_DURATION.start_timer();
     let hash = tokio::task::spawn_blocking(move || {
         let hasher = crate::get_hasher();
         let image = image::load_from_memory(&buf).unwrap();
@@ -433,6 +460,7 @@ pub async fn search_image_by_url(
     .instrument(span!(tracing::Level::TRACE, "hashing image"))
     .await
     .unwrap();
+    drop(_timer);
 
     let hash: [u8; 8] = hash.as_bytes().try_into().unwrap();
     let num = i64::from_be_bytes(hash);
@@ -460,6 +488,8 @@ pub async fn search_image_by_url(
 #[tracing::instrument]
 pub async fn handle_rejection(err: Rejection) -> Result<Box<dyn Reply>, std::convert::Infallible> {
     warn!("had rejection");
+
+    UNHANDLED_REJECTIONS.inc();
 
     let (code, message) = if err.is_not_found() {
         (
