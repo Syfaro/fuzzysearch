@@ -23,6 +23,86 @@
       ]
     }
   },
+  "1bd0057782de5a3b41f90081a31d24d14bb70299391050c3404742a6d2915d9e": {
+    "query": "SELECT\n                        hashes.id,\n                        hashes.hash,\n                        hashes.furaffinity_id,\n                        hashes.e621_id,\n                        hashes.twitter_id,\n                    CASE\n                        WHEN furaffinity_id IS NOT NULL THEN (f.url)\n                        WHEN e621_id IS NOT NULL THEN (e.data->'file'->>'url')\n                        WHEN twitter_id IS NOT NULL THEN (tm.url)\n                    END url,\n                    CASE\n                        WHEN furaffinity_id IS NOT NULL THEN (f.filename)\n                        WHEN e621_id IS NOT NULL THEN ((e.data->'file'->>'md5') || '.' || (e.data->'file'->>'ext'))\n                        WHEN twitter_id IS NOT NULL THEN (SELECT split_part(split_part(tm.url, '/', 5), ':', 1))\n                    END filename,\n                    CASE\n                        WHEN furaffinity_id IS NOT NULL THEN (ARRAY(SELECT f.name))\n                        WHEN e621_id IS NOT NULL THEN ARRAY(SELECT jsonb_array_elements_text(e.data->'tags'->'artist'))\n                        WHEN twitter_id IS NOT NULL THEN ARRAY(SELECT tw.data->'user'->>'screen_name')\n                    END artists,\n                    CASE\n                        WHEN furaffinity_id IS NOT NULL THEN (f.file_id)\n                    END file_id,\n                    CASE\n                        WHEN e621_id IS NOT NULL THEN ARRAY(SELECT jsonb_array_elements_text(e.data->'sources'))\n                    END sources,\n                    CASE\n                        WHEN furaffinity_id IS NOT NULL THEN (f.rating)\n                        WHEN e621_id IS NOT NULL THEN (e.data->>'rating')\n                        WHEN twitter_id IS NOT NULL THEN\n                            CASE\n                                WHEN (tw.data->'possibly_sensitive')::boolean IS true THEN 'adult'\n                                WHEN (tw.data->'possibly_sensitive')::boolean IS false THEN 'general'\n                            END\n                    END rating\n                FROM\n                    hashes\n                LEFT JOIN LATERAL (\n                    SELECT *\n                    FROM submission\n                    JOIN artist ON submission.artist_id = artist.id\n                    WHERE submission.id = hashes.furaffinity_id\n                ) f ON hashes.furaffinity_id IS NOT NULL\n                LEFT JOIN LATERAL (\n                    SELECT *\n                    FROM e621\n                    WHERE e621.id = hashes.e621_id\n                ) e ON hashes.e621_id IS NOT NULL\n                LEFT JOIN LATERAL (\n                    SELECT *\n                    FROM tweet\n                    WHERE tweet.id = hashes.twitter_id\n                ) tw ON hashes.twitter_id IS NOT NULL\n                LEFT JOIN LATERAL (\n                    SELECT *\n                    FROM tweet_media\n                    WHERE\n                        tweet_media.tweet_id = hashes.twitter_id AND\n                        tweet_media.hash <@ (hashes.hash, 0)\n                    LIMIT 1\n                ) tm ON hashes.twitter_id IS NOT NULL\n                WHERE hashes.id = $1",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int4"
+        },
+        {
+          "ordinal": 1,
+          "name": "hash",
+          "type_info": "Int8"
+        },
+        {
+          "ordinal": 2,
+          "name": "furaffinity_id",
+          "type_info": "Int4"
+        },
+        {
+          "ordinal": 3,
+          "name": "e621_id",
+          "type_info": "Int4"
+        },
+        {
+          "ordinal": 4,
+          "name": "twitter_id",
+          "type_info": "Int8"
+        },
+        {
+          "ordinal": 5,
+          "name": "url",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 6,
+          "name": "filename",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 7,
+          "name": "artists",
+          "type_info": "TextArray"
+        },
+        {
+          "ordinal": 8,
+          "name": "file_id",
+          "type_info": "Int4"
+        },
+        {
+          "ordinal": 9,
+          "name": "sources",
+          "type_info": "TextArray"
+        },
+        {
+          "ordinal": 10,
+          "name": "rating",
+          "type_info": "Bpchar"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Int4"
+        ]
+      },
+      "nullable": [
+        false,
+        false,
+        true,
+        true,
+        true,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    }
+  },
   "659ee9ddc1c5ccd42ba9dc1617440544c30ece449ba3ba7f9d39f447b8af3cfe": {
     "query": "SELECT\n            api_key.id,\n            api_key.name_limit,\n            api_key.image_limit,\n            api_key.hash_limit,\n            api_key.name,\n            account.email owner_email\n        FROM\n            api_key\n        JOIN account\n            ON account.id = api_key.user_id\n        WHERE\n            api_key.key = $1\n    ",
     "describe": {
@@ -89,80 +169,6 @@
         ]
       },
       "nullable": [
-        null
-      ]
-    }
-  },
-  "f4608ccaf739d36649cdbc5297177a989cc7763006d28c97e219bb708930972a": {
-    "query": "SELECT\n                        hashes.id,\n                        hashes.hash,\n                        hashes.furaffinity_id,\n                        hashes.e621_id,\n                        hashes.twitter_id,\n                    CASE\n                        WHEN furaffinity_id IS NOT NULL THEN (f.url)\n                        WHEN e621_id IS NOT NULL THEN (e.data->'file'->>'url')\n                        WHEN twitter_id IS NOT NULL THEN (tm.url)\n                    END url,\n                    CASE\n                        WHEN furaffinity_id IS NOT NULL THEN (f.filename)\n                        WHEN e621_id IS NOT NULL THEN ((e.data->'file'->>'md5') || '.' || (e.data->'file'->>'ext'))\n                        WHEN twitter_id IS NOT NULL THEN (SELECT split_part(split_part(tm.url, '/', 5), ':', 1))\n                    END filename,\n                    CASE\n                        WHEN furaffinity_id IS NOT NULL THEN (ARRAY(SELECT f.name))\n                        WHEN e621_id IS NOT NULL THEN ARRAY(SELECT jsonb_array_elements_text(e.data->'tags'->'artist'))\n                        WHEN twitter_id IS NOT NULL THEN ARRAY(SELECT tw.data->'user'->>'screen_name')\n                    END artists,\n                    CASE\n                        WHEN furaffinity_id IS NOT NULL THEN (f.file_id)\n                    END file_id,\n                    CASE\n                        WHEN e621_id IS NOT NULL THEN ARRAY(SELECT jsonb_array_elements_text(e.data->'sources'))\n                    END sources\n                FROM\n                    hashes\n                LEFT JOIN LATERAL (\n                    SELECT *\n                    FROM submission\n                    JOIN artist ON submission.artist_id = artist.id\n                    WHERE submission.id = hashes.furaffinity_id\n                ) f ON hashes.furaffinity_id IS NOT NULL\n                LEFT JOIN LATERAL (\n                    SELECT *\n                    FROM e621\n                    WHERE e621.id = hashes.e621_id\n                ) e ON hashes.e621_id IS NOT NULL\n                LEFT JOIN LATERAL (\n                    SELECT *\n                    FROM tweet\n                    WHERE tweet.id = hashes.twitter_id\n                ) tw ON hashes.twitter_id IS NOT NULL\n                LEFT JOIN LATERAL (\n                    SELECT *\n                    FROM tweet_media\n                    WHERE\n                        tweet_media.tweet_id = hashes.twitter_id AND\n                        tweet_media.hash <@ (hashes.hash, 0)\n                    LIMIT 1\n                ) tm ON hashes.twitter_id IS NOT NULL\n                WHERE hashes.id = $1",
-    "describe": {
-      "columns": [
-        {
-          "ordinal": 0,
-          "name": "id",
-          "type_info": "Int4"
-        },
-        {
-          "ordinal": 1,
-          "name": "hash",
-          "type_info": "Int8"
-        },
-        {
-          "ordinal": 2,
-          "name": "furaffinity_id",
-          "type_info": "Int4"
-        },
-        {
-          "ordinal": 3,
-          "name": "e621_id",
-          "type_info": "Int4"
-        },
-        {
-          "ordinal": 4,
-          "name": "twitter_id",
-          "type_info": "Int8"
-        },
-        {
-          "ordinal": 5,
-          "name": "url",
-          "type_info": "Text"
-        },
-        {
-          "ordinal": 6,
-          "name": "filename",
-          "type_info": "Text"
-        },
-        {
-          "ordinal": 7,
-          "name": "artists",
-          "type_info": "TextArray"
-        },
-        {
-          "ordinal": 8,
-          "name": "file_id",
-          "type_info": "Int4"
-        },
-        {
-          "ordinal": 9,
-          "name": "sources",
-          "type_info": "TextArray"
-        }
-      ],
-      "parameters": {
-        "Left": [
-          "Int4"
-        ]
-      },
-      "nullable": [
-        false,
-        false,
-        true,
-        true,
-        true,
-        null,
-        null,
-        null,
-        null,
         null
       ]
     }

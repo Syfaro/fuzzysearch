@@ -377,7 +377,9 @@ pub async fn search_file(
                 file_id: row.get("file_id"),
             })),
             searched_hash: None,
-            rating: row.get::<String, _>("rating").parse().ok(),
+            rating: row
+                .get::<Option<String>, _>("rating")
+                .and_then(|rating| rating.parse().ok()),
         })
         .fetch_all(&db)
         .await;
