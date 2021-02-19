@@ -117,7 +117,16 @@ pub fn image_query_sync(
                     END file_id,
                     CASE
                         WHEN e621_id IS NOT NULL THEN ARRAY(SELECT jsonb_array_elements_text(e.data->'sources'))
-                    END sources
+                    END sources,
+                    CASE
+                        WHEN furaffinity_id IS NOT NULL THEN (f.rating)
+                        WHEN e621_id IS NOT NULL THEN (e.data->>'rating')
+                        WHEN twitter_id IS NOT NULL THEN
+                            CASE
+                                WHEN (tw.data->'possibly_sensitive')::boolean IS true THEN 'adult'
+                                WHEN (tw.data->'possibly_sensitive')::boolean IS false THEN 'general'
+                            END
+                    END rating
                 FROM
                     hashes
                 LEFT JOIN LATERAL (
@@ -169,6 +178,7 @@ pub fn image_query_sync(
                         id: row.id,
                         site_id,
                         site_info,
+                        rating: row.rating.and_then(|rating| rating.parse().ok()),
                         site_id_str: site_id.to_string(),
                         url: row.url.unwrap_or_default(),
                         hash: Some(row.hash),

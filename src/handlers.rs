@@ -301,6 +301,7 @@ pub async fn search_file(
                     submission.url,
                     submission.filename,
                     submission.file_id,
+                    submission.rating,
                     artist.name,
                     hashes.id hash_id
                 FROM
@@ -321,6 +322,7 @@ pub async fn search_file(
                     submission.url,
                     submission.filename,
                     submission.file_id,
+                    submission.rating,
                     artist.name,
                     hashes.id hash_id
                 FROM
@@ -341,6 +343,7 @@ pub async fn search_file(
                     submission.url,
                     submission.filename,
                     submission.file_id,
+                    submission.rating,
                     artist.name,
                     hashes.id hash_id
                 FROM
@@ -374,6 +377,7 @@ pub async fn search_file(
                 file_id: row.get("file_id"),
             })),
             searched_hash: None,
+            rating: row.get::<String, _>("rating").parse().ok(),
         })
         .fetch_all(&db)
         .await;
