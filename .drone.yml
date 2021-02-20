@@ -33,4 +33,8 @@ steps:
       from_secret: sccache_s3_endpoint
     SCCACHE_S3_USE_SSL: true
 
+---
+kind: signature
+hmac: 665dab5e07086669c4b215ed86faa0e1e63c495b0bf020099fb1edd33757618b
+
 ...

@@ -10,10 +10,11 @@ pub fn search(
 ) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
     search_image(db.clone(), tree.clone())
         .or(search_hashes(db.clone(), tree.clone()))
-        .or(stream_search_image(db.clone(), tree))
+        .or(stream_search_image(db.clone(), tree.clone()))
         .or(search_file(db.clone()))
         .or(search_video(db.clone()))
-        .or(check_handle(db))
+        .or(check_handle(db.clone()))
+        .or(search_image_by_url(db, tree))
 }
 
 pub fn search_file(db: Pool) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
@@ -53,6 +54,19 @@ pub fn search_image(
                 handlers::search_image(form, opts, pool, tree, api_key).in_current_span()
             })
         })
+}
+
+pub fn search_image_by_url(
+    db: Pool,
+    tree: Tree,
+) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
+    warp::path("url")
+        .and(warp::get())
+        .and(warp::query::<UrlSearchOpts>())
+        .and(with_pool(db))
+        .and(with_tree(tree))
+        .and(with_api_key())
+        .and_then(handlers::search_image_by_url)
 }
 
 pub fn search_hashes(

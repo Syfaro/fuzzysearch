@@ -165,7 +165,7 @@ async fn main() {
 
     tokio::spawn(async move {
         if let Err(e) = connection.await {
-            panic!(e);
+            panic!("postgres connection error: {:?}", e);
         }
     });
 

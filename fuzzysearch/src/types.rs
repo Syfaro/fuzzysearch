@@ -10,7 +10,7 @@ use fuzzysearch_common::types::SearchResult;
 pub struct ApiKey {
     pub id: i32,
     pub name: Option<String>,
-    pub owner_email: Option<String>,
+    pub owner_email: String,
     pub name_limit: i16,
     pub image_limit: i16,
     pub hash_limit: i16,
@@ -22,7 +22,7 @@ pub enum RateLimit {
     /// This key is limited, we should deny the request.
     Limited,
     /// This key is available, contains the number of requests made.
-    Available(i16),
+    Available((i16, i16)),
 }
 
 #[derive(Debug, Deserialize)]
@@ -67,4 +67,9 @@ pub struct HashSearchOpts {
 #[derive(Debug, Deserialize)]
 pub struct HandleOpts {
     pub twitter: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UrlSearchOpts {
+    pub url: String,
 }
