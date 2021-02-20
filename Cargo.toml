@@ -2,6 +2,7 @@
 members = [
     "fuzzysearch",
     "fuzzysearch-common",
+    "fuzzysearch-ingest-e621",
     "fuzzysearch-ingest-furaffinity",
     "fuzzysearch-ingest-weasyl"
 ]

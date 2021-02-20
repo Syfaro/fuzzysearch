@@ -164,7 +164,7 @@ mod tests {
 
         assert_eq!(
             hashes[0],
-            [154, 64, 160, 169, 170, 53, 181, 221],
+            [154, 64, 160, 169, 170, 53, 53, 221],
             "First frame had different hash"
         );
         assert_eq!(
@@ -191,12 +191,12 @@ mod tests {
 
         assert_eq!(
             hashes[0],
-            [60, 166, 75, 61, 48, 166, 73, 205],
+            [60, 166, 75, 61, 48, 166, 75, 205],
             "First frame had different hash"
         );
         assert_eq!(
             hashes[1],
-            [60, 166, 75, 61, 48, 166, 73, 205],
+            [60, 166, 75, 61, 48, 166, 75, 205],
             "Second frame had different hash"
         );
 
