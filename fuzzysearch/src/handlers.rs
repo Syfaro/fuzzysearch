@@ -16,6 +16,11 @@ lazy_static! {
         "Duration to perform an image hash operation"
     )
     .unwrap();
+    static ref VIDEO_HASH_DURATION: Histogram = register_histogram!(
+        "fuzzysearch_api_video_hash_seconds",
+        "Duration to perform a video hash operation"
+    )
+    .unwrap();
     static ref IMAGE_URL_DOWNLOAD_DURATION: Histogram = register_histogram!(
         "fuzzysearch_api_image_url_download_seconds",
         "Duration to download an image from a provided URL"
@@ -130,23 +135,25 @@ async fn hash_input(form: warp::multipart::FormData) -> (i64, img_hash::ImageHas
 }
 
 #[tracing::instrument(skip(form))]
-async fn hash_video(form: warp::multipart::FormData) -> Vec<[u8; 8]> {
+async fn hash_video(form: warp::multipart::FormData) -> Option<Vec<[u8; 8]>> {
     use bytes::Buf;
 
     let bytes = get_field_bytes(form, "video").await;
 
+    let _timer = VIDEO_HASH_DURATION.start_timer();
     let hashes = tokio::task::spawn_blocking(move || {
         if infer::is_video(&bytes) {
-            fuzzysearch_common::video::extract_video_hashes(bytes.reader()).unwrap()
+            fuzzysearch_common::video::extract_video_hashes(bytes.reader()).ok()
         } else if infer::image::is_gif(&bytes) {
-            fuzzysearch_common::video::extract_gif_hashes(bytes.reader()).unwrap()
+            fuzzysearch_common::video::extract_gif_hashes(bytes.reader()).ok()
         } else {
-            panic!("invalid file type provided");
+            None
         }
     })
     .instrument(span!(tracing::Level::TRACE, "hashing video"))
     .await
     .unwrap();
+    drop(_timer);
 
     hashes
 }
