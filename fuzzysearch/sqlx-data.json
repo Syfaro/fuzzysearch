@@ -130,12 +130,12 @@
         {
           "ordinal": 4,
           "name": "name",
-          "type_info": "Varchar"
+          "type_info": "Text"
         },
         {
           "ordinal": 5,
           "name": "owner_email",
-          "type_info": "Varchar"
+          "type_info": "Text"
         }
       ],
       "parameters": {

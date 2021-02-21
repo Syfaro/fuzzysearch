@@ -16,18 +16,6 @@
       "nullable": []
     }
   },
-  "18a59439be1a5b6f03326ad14960fe1ada5cee94638711df99b471d86235be24": {
-    "query": "INSERT INTO WEASYL (id) VALUES ($1)",
-    "describe": {
-      "columns": [],
-      "parameters": {
-        "Left": [
-          "Int4"
-        ]
-      },
-      "nullable": []
-    }
-  },
   "364c5c10ad748d1822c3e909aca601993f0ddb7690368a82ae467b3b0950478e": {
     "query": "INSERT INTO WEASYL (id, data) VALUES ($1, $2)",
     "describe": {
