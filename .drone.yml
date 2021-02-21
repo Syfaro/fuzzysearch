@@ -8,7 +8,7 @@ platform:
   arch: amd64
 
 steps:
-- name: test
+- name: Run tests
   image: rust:1-slim-buster
   commands:
   - apt-get update -y
@@ -33,8 +33,76 @@ steps:
       from_secret: sccache_s3_endpoint
     SCCACHE_S3_USE_SSL: true
 
+- name: Build FuzzySearch API
+  image: plugins/docker
+  settings:
+    auto_tag: true
+    dockerfile: fuzzysearch/Dockerfile
+    password:
+      from_secret: docker_password
+    registry: registry.huefox.com
+    repo: registry.huefox.com/fuzzysearch/api
+    username:
+      from_secret: docker_username
+  when:
+    branch:
+    - master
+    paths:
+    - fuzzysearch/**
+
+- name: Build Ingester e621
+  image: plugins/docker
+  settings:
+    auto_tag: true
+    dockerfile: fuzzysearch-ingest-e621/Dockerfile
+    password:
+      from_secret: docker_password
+    registry: registry.huefox.com
+    repo: registry.huefox.com/fuzzysearch/ingest-e621
+    username:
+      from_secret: docker_username
+  when:
+    branch:
+    - master
+    paths:
+    - fuzzysearch-ingest-e621/**
+
+- name: Build Ingester FurAffinity
+  image: plugins/docker
+  settings:
+    auto_tag: true
+    dockerfile: fuzzysearch-ingest-furaffinity/Dockerfile
+    password:
+      from_secret: docker_password
+    registry: registry.huefox.com
+    repo: registry.huefox.com/fuzzysearch/ingest-furaffinity
+    username:
+      from_secret: docker_username
+  when:
+    branch:
+    - master
+    paths:
+    - fuzzysearch-ingest-furaffinity/**
+
+- name: Build Ingester Weasyl
+  image: plugins/docker
+  settings:
+    auto_tag: true
+    dockerfile: fuzzysearch-ingest-weasyl/Docker
+    password:
+      from_secret: docker_password
+    registry: registry.huefox.com
+    repo: registry.huefox.com/fuzzysearch/ingest-weasyl
+    username:
+      from_secret: docker_username
+  when:
+    branch:
+    - master
+    paths:
+    - fuzzysearch-ingest-weasyl/**
+
 ---
 kind: signature
-hmac: 665dab5e07086669c4b215ed86faa0e1e63c495b0bf020099fb1edd33757618b
+hmac: 33bc014cd33d59213ac44b346b006948c5135b4cfeffcfec94a09302263d1074
 
 ...
