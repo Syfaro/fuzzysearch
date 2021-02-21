@@ -190,7 +190,7 @@ async fn main() {
                             println!("got error: {:?}, retry {}", e.message, e.retry);
                             timer.stop_and_discard();
                             if e.retry {
-                                tokio::time::delay_for(std::time::Duration::from_secs(attempt + 1))
+                                tokio::time::sleep(std::time::Duration::from_secs(attempt + 1))
                                     .await;
                                 continue 'attempt;
                             } else {
@@ -231,6 +231,6 @@ async fn main() {
 
         println!("completed fetch, waiting a minute before loading more");
 
-        tokio::time::delay_for(std::time::Duration::from_secs(60)).await;
+        tokio::time::sleep(std::time::Duration::from_secs(60)).await;
     }
 }

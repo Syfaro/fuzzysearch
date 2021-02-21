@@ -208,6 +208,6 @@ async fn main() {
             }
         }
 
-        tokio::time::delay_for(std::time::Duration::from_secs(60 * 5)).await;
+        tokio::time::sleep(std::time::Duration::from_secs(60 * 5)).await;
     }
 }
