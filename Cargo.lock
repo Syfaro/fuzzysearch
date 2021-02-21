@@ -510,27 +510,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "e621-watcher"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "hamming",
- "hyper",
- "image",
- "img_hash",
- "lazy_static",
- "prometheus 0.11.0",
- "reqwest",
- "serde",
- "serde_json",
- "sha2",
- "sqlx",
- "tokio",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "ego-tree"
 version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -808,6 +787,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "fuzzysearch-ingest-e621"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "fuzzysearch-common",
+ "hamming",
+ "hyper",
+ "image",
+ "img_hash",
+ "lazy_static",
+ "prometheus 0.11.0",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2",
+ "sqlx",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "fuzzysearch-ingest-furaffinity"
 version = "0.1.0"
 dependencies = [
@@ -822,6 +823,22 @@ dependencies = [
  "reqwest",
  "tokio",
  "tokio-postgres",
+]
+
+[[package]]
+name = "fuzzysearch-ingest-weasyl"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "fuzzysearch-common",
+ "image",
+ "img_hash",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2",
+ "sqlx",
+ "tokio",
 ]
 
 [[package]]
@@ -3361,22 +3378,6 @@ name = "wasm-bindgen-shared"
 version = "0.2.70"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dd4945e4943ae02d15c13962b38a5b1e81eadd4b71214eee75af64a4d6a4fd64"
-
-[[package]]
-name = "weasyl-watcher"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "fuzzysearch-common",
- "image",
- "img_hash",
- "reqwest",
- "serde",
- "serde_json",
- "sha2",
- "sqlx",
- "tokio",
-]
 
 [[package]]
 name = "web-sys"

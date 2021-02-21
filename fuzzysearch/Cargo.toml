@@ -41,4 +41,4 @@ hamming = "0.1"
 
 bk-tree = "0.3"
 
-fuzzysearch-common = { path = "../fuzzysearch-common" }
+fuzzysearch-common = { path = "../fuzzysearch-common", features = ["video"] }

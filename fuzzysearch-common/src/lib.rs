@@ -1,4 +1,5 @@
 pub mod types;
+#[cfg(feature = "video")]
 pub mod video;
 
 /// Create an instance of img_hash with project defaults.

@@ -1,5 +1,5 @@
 [package]
-name = "weasyl-watcher"
+name = "fuzzysearch-ingest-weasyl"
 version = "0.1.0"
 authors = ["Syfaro <syfaro@huefox.com>"]
 edition = "2018"

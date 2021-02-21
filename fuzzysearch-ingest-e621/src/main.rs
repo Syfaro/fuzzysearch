@@ -272,7 +272,7 @@ async fn load_image(client: &reqwest::Client, url: &str) -> anyhow::Result<Image
 
     tracing::trace!(?result, "Calculated image SHA256");
 
-    let hasher = get_hasher();
+    let hasher = fuzzysearch_common::get_hasher();
     let img = match image::load_from_memory(&bytes) {
         Ok(img) => img,
         Err(err) => {
@@ -290,14 +290,6 @@ async fn load_image(client: &reqwest::Client, url: &str) -> anyhow::Result<Image
     tracing::trace!(?hash, "Calculated image hash");
 
     Ok((Some(hash), None, Some(result)))
-}
-
-fn get_hasher() -> img_hash::Hasher<[u8; 8]> {
-    img_hash::HasherConfig::with_bytes_type::<[u8; 8]>()
-        .hash_alg(img_hash::HashAlg::Gradient)
-        .hash_size(8, 8)
-        .preproc_dct()
-        .to_hasher()
 }
 
 async fn provide_metrics(

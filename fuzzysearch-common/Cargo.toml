@@ -4,6 +4,11 @@ version = "0.1.0"
 authors = ["Syfaro <syfaro@huefox.com>"]
 edition = "2018"
 
+[features]
+default = []
+
+video = ["ffmpeg-next", "tempfile"]
+
 [dependencies]
 anyhow = "1"
 tracing = "0.1"
@@ -13,5 +18,5 @@ serde = { version = "1", features = ["derive"] }
 image = "0.23"
 img_hash = "3"
 
-ffmpeg-next = "4"
-tempfile = "3"
+ffmpeg-next = { version = "4", optional = true }
+tempfile = { version = "3", optional = true }
