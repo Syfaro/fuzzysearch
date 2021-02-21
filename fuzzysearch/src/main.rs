@@ -95,7 +95,12 @@ fn configure_tracing() {
         .with(fmt_layer);
 
     let exporter = opentelemetry_jaeger::Exporter::builder()
-        .with_agent_endpoint(std::env::var("JAEGER_COLLECTOR").unwrap().parse().unwrap())
+        .with_agent_endpoint(
+            std::env::var("JAEGER_COLLECTOR")
+                .expect("Missing JAEGER_COLLECTOR")
+                .parse()
+                .unwrap(),
+        )
         .with_process(opentelemetry_jaeger::Process {
             service_name: "fuzzysearch".to_string(),
             tags: vec![

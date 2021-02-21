@@ -4,7 +4,7 @@ CREATE TABLE artist (
 );
 
 CREATE TABLE submission (
-    id SERIAL PRIMARY KEY,
+    id INTEGER PRIMARY KEY,
     artist_id INTEGER REFERENCES artist (id),
     hash BYTEA,
     hash_int BIGINT,
