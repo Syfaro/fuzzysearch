@@ -1,6 +1,6 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum Rating {
     General,
@@ -24,7 +24,7 @@ impl std::str::FromStr for Rating {
 }
 
 /// A general type for every result in a search.
-#[derive(Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct SearchResult {
     pub id: i32,
 
@@ -49,7 +49,7 @@ pub struct SearchResult {
     pub searched_hash: Option<i64>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "site", content = "site_info")]
 pub enum SiteInfo {
     FurAffinity {
