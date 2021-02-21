@@ -88,7 +88,7 @@ steps:
   image: plugins/docker
   settings:
     auto_tag: true
-    dockerfile: fuzzysearch-ingest-weasyl/Docker
+    dockerfile: fuzzysearch-ingest-weasyl/Dockerfile
     password:
       from_secret: docker_password
     registry: registry.huefox.com
@@ -103,6 +103,6 @@ steps:
 
 ---
 kind: signature
-hmac: 33bc014cd33d59213ac44b346b006948c5135b4cfeffcfec94a09302263d1074
+hmac: 82ee084d72d5ef16c8fb5b756ea1cce82691d3510305b0665c9c618aa9fb4d18
 
 ...
