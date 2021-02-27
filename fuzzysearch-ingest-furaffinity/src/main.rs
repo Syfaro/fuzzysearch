@@ -135,7 +135,10 @@ async fn request(
 async fn web() {
     use hyper::service::{make_service_fn, service_fn};
 
-    let addr: std::net::SocketAddr = std::env::var("HTTP_HOST").unwrap().parse().unwrap();
+    let addr: std::net::SocketAddr = std::env::var("HTTP_HOST")
+        .expect("Missing HTTP_HOST")
+        .parse()
+        .unwrap();
 
     let service = make_service_fn(|_| async { Ok::<_, hyper::Error>(service_fn(request)) });
 
@@ -146,18 +149,66 @@ async fn web() {
     server.await.unwrap();
 }
 
+struct RetryHandler {
+    max_attempts: usize,
+}
+
+impl RetryHandler {
+    fn new(max_attempts: usize) -> Self {
+        Self { max_attempts }
+    }
+}
+
+impl futures_retry::ErrorHandler<furaffinity_rs::Error> for RetryHandler {
+    type OutError = furaffinity_rs::Error;
+
+    fn handle(
+        &mut self,
+        attempt: usize,
+        err: furaffinity_rs::Error,
+    ) -> futures_retry::RetryPolicy<Self::OutError> {
+        println!(
+            "Attempt {}/{} has failed: {:?}",
+            attempt, self.max_attempts, err
+        );
+
+        if attempt >= self.max_attempts {
+            println!("All attempts have been used");
+            return futures_retry::RetryPolicy::ForwardError(err);
+        }
+
+        if !err.retry {
+            println!("Error did not ask for retry");
+            return futures_retry::RetryPolicy::ForwardError(err);
+        }
+
+        return futures_retry::RetryPolicy::WaitRetry(std::time::Duration::from_secs(
+            1 + attempt as u64,
+        ));
+    }
+}
+
 #[tokio::main]
 async fn main() {
     let (cookie_a, cookie_b) = (
-        std::env::var("FA_A").expect("missing fa cookie a"),
-        std::env::var("FA_B").expect("missing fa cookie b"),
+        std::env::var("FA_A").expect("Missing FA_A"),
+        std::env::var("FA_B").expect("Missing FA_B"),
     );
 
-    let user_agent = std::env::var("USER_AGENT").expect("missing user agent");
+    let user_agent = std::env::var("USER_AGENT").expect("Missing USER_AGENT");
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .unwrap();
 
-    let fa = furaffinity_rs::FurAffinity::new(cookie_a, cookie_b, user_agent);
+    let fa = std::sync::Arc::new(furaffinity_rs::FurAffinity::new(
+        cookie_a,
+        cookie_b,
+        user_agent,
+        Some(client),
+    ));
 
-    let dsn = std::env::var("POSTGRES_DSN").expect("missing postgres dsn");
+    let dsn = std::env::var("POSTGRES_DSN").expect("Missing POSTGRES_DSN");
 
     let (client, connection) = tokio_postgres::connect(&dsn, tokio_postgres::NoTls)
         .await
@@ -165,7 +216,7 @@ async fn main() {
 
     tokio::spawn(async move {
         if let Err(e) = connection.await {
-            panic!("postgres connection error: {:?}", e);
+            panic!("PostgreSQL connection error: {:?}", e);
         }
     });
 
@@ -173,64 +224,68 @@ async fn main() {
 
     println!("Started");
 
-    'main: loop {
-        println!("Fetching latest ID");
+    loop {
+        print!("Fetching latest ID... ");
         let latest_id = fa.latest_id().await.expect("unable to get latest id");
+        println!("{}", latest_id);
 
         for id in ids_to_check(&client, latest_id).await {
-            'attempt: for attempt in 0..3 {
-                if !has_submission(&client, id).await {
-                    println!("loading submission {}", id);
-
-                    let timer = SUBMISSION_DURATION.start_timer();
-
-                    let sub = match fa.get_submission(id).await {
-                        Ok(sub) => sub,
-                        Err(e) => {
-                            println!("got error: {:?}, retry {}", e.message, e.retry);
-                            timer.stop_and_discard();
-                            if e.retry {
-                                tokio::time::sleep(std::time::Duration::from_secs(attempt + 1))
-                                    .await;
-                                continue 'attempt;
-                            } else {
-                                println!("unrecoverable, exiting");
-                                break 'main;
-                            }
-                        }
-                    };
-
-                    let sub = match sub {
-                        Some(sub) => sub,
-                        None => {
-                            println!("did not exist");
-                            timer.stop_and_discard();
-                            insert_null_submission(&client, id).await.unwrap();
-                            break 'attempt;
-                        }
-                    };
-
-                    let sub = match fa.calc_image_hash(sub.clone()).await {
-                        Ok(sub) => sub,
-                        Err(e) => {
-                            println!("unable to hash image: {:?}", e);
-                            sub
-                        }
-                    };
-
-                    timer.stop_and_record();
-
-                    insert_submission(&client, &sub).await.unwrap();
-
-                    break 'attempt;
-                }
-
-                println!("ran out of attempts");
+            if has_submission(&client, id).await {
+                continue;
             }
+
+            println!("Loading submission {}", id);
+
+            let _timer = SUBMISSION_DURATION.start_timer();
+
+            let sub =
+                futures_retry::FutureRetry::new(|| fa.get_submission(id), RetryHandler::new(3))
+                    .await
+                    .map(|(sub, _attempts)| sub)
+                    .map_err(|(err, _attempts)| err);
+
+            let sub = match sub {
+                Ok(sub) => sub,
+                Err(err) => {
+                    println!("Failed to load submission {}: {:?}", id, err);
+                    _timer.stop_and_discard();
+                    insert_null_submission(&client, id).await.unwrap();
+                    continue;
+                }
+            };
+
+            let sub = match sub {
+                Some(sub) => sub,
+                None => {
+                    println!("Submission {} did not exist", id);
+                    _timer.stop_and_discard();
+                    insert_null_submission(&client, id).await.unwrap();
+                    continue;
+                }
+            };
+
+            let image = futures_retry::FutureRetry::new(
+                || fa.calc_image_hash(sub.clone()),
+                RetryHandler::new(3),
+            )
+            .await
+            .map(|(sub, _attempt)| sub)
+            .map_err(|(err, _attempt)| err);
+
+            let sub = match image {
+                Ok(sub) => sub,
+                Err(err) => {
+                    println!("Unable to hash submission {} image: {:?}", id, err);
+                    sub
+                }
+            };
+
+            _timer.stop_and_record();
+
+            insert_submission(&client, &sub).await.unwrap();
         }
 
-        println!("completed fetch, waiting a minute before loading more");
-
+        println!("Completed fetch, waiting a minute before loading more");
         tokio::time::sleep(std::time::Duration::from_secs(60)).await;
     }
 }

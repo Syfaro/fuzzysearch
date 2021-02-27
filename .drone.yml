@@ -49,6 +49,7 @@ steps:
     - master
     paths:
     - fuzzysearch/**
+    - Cargo.lock
 
 - name: Build Ingester e621
   image: plugins/docker
@@ -66,6 +67,7 @@ steps:
     - master
     paths:
     - fuzzysearch-ingest-e621/**
+    - Cargo.lock
 
 - name: Build Ingester FurAffinity
   image: plugins/docker
@@ -83,6 +85,7 @@ steps:
     - master
     paths:
     - fuzzysearch-ingest-furaffinity/**
+    - Cargo.lock
 
 - name: Build Ingester Weasyl
   image: plugins/docker
@@ -100,9 +103,10 @@ steps:
     - master
     paths:
     - fuzzysearch-ingest-weasyl/**
+    - Cargo.lock
 
 ---
 kind: signature
-hmac: 82ee084d72d5ef16c8fb5b756ea1cce82691d3510305b0665c9c618aa9fb4d18
+hmac: 1bdb44f8ec5055a4c350ace9aca8448189fc622a91efd71210f0a45aa78d588f
 
 ...
