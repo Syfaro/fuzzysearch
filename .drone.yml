@@ -47,6 +47,8 @@ steps:
   when:
     branch:
     - master
+    event:
+    - push
     paths:
     - fuzzysearch/**
     - Cargo.lock
@@ -65,6 +67,8 @@ steps:
   when:
     branch:
     - master
+    event:
+    - push
     paths:
     - fuzzysearch-ingest-e621/**
     - Cargo.lock
@@ -83,6 +87,8 @@ steps:
   when:
     branch:
     - master
+    event:
+    - push
     paths:
     - fuzzysearch-ingest-furaffinity/**
     - Cargo.lock
@@ -101,12 +107,14 @@ steps:
   when:
     branch:
     - master
+    event:
+    - push
     paths:
     - fuzzysearch-ingest-weasyl/**
     - Cargo.lock
 
 ---
 kind: signature
-hmac: 1bdb44f8ec5055a4c350ace9aca8448189fc622a91efd71210f0a45aa78d588f
+hmac: 6c87d24325f6646ff0fe06eaf62e94cf53508cdf73dc303607e7ec74a8b4486e
 
 ...
