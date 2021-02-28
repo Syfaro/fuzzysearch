@@ -8,6 +8,12 @@ lazy_static! {
         "Duration to process a submission"
     )
     .unwrap_or_log();
+    static ref USERS_ONLINE: prometheus::IntGaugeVec = prometheus::register_int_gauge_vec!(
+        "fuzzysearch_watcher_fa_users_online_count",
+        "Number of users online for each category",
+        &["group"]
+    )
+    .unwrap_or_log();
 }
 
 async fn lookup_tag(client: &Client, tag: &str) -> i32 {
@@ -233,9 +239,21 @@ async fn main() {
             .latest_id()
             .await
             .expect_or_log("Unable to get latest id");
-        tracing::info!(latest_id, "Got latest ID");
+        tracing::info!(latest_id = latest_id.0, "Got latest ID");
 
-        for id in ids_to_check(&client, latest_id).await {
+        let online = latest_id.1;
+        tracing::debug!(?online, "Got updated users online");
+        USERS_ONLINE
+            .with_label_values(&["guest"])
+            .set(online.guests as i64);
+        USERS_ONLINE
+            .with_label_values(&["registered"])
+            .set(online.registered as i64);
+        USERS_ONLINE
+            .with_label_values(&["other"])
+            .set(online.other as i64);
+
+        for id in ids_to_check(&client, latest_id.0).await {
             if has_submission(&client, id).await {
                 continue;
             }
