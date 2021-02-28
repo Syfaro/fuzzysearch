@@ -58,7 +58,7 @@ async fn has_submission(client: &Client, id: i32) -> bool {
     client
         .query("SELECT id FROM submission WHERE id = $1", &[&id])
         .await
-        .expect("unable to run query")
+        .expect("Unable to run query")
         .into_iter()
         .next()
         .is_some()
@@ -226,7 +226,7 @@ async fn main() {
 
     loop {
         tracing::debug!("Fetching latest ID... ");
-        let latest_id = fa.latest_id().await.expect("unable to get latest id");
+        let latest_id = fa.latest_id().await.expect("Unable to get latest id");
         tracing::info!(latest_id, "Got latest ID");
 
         for id in ids_to_check(&client, latest_id).await {
