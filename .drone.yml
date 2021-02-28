@@ -47,8 +47,11 @@ steps:
   when:
     branch:
     - master
+    event:
+    - push
     paths:
     - fuzzysearch/**
+    - Cargo.lock
 
 - name: Build Ingester e621
   image: plugins/docker
@@ -64,8 +67,11 @@ steps:
   when:
     branch:
     - master
+    event:
+    - push
     paths:
     - fuzzysearch-ingest-e621/**
+    - Cargo.lock
 
 - name: Build Ingester FurAffinity
   image: plugins/docker
@@ -81,8 +87,11 @@ steps:
   when:
     branch:
     - master
+    event:
+    - push
     paths:
     - fuzzysearch-ingest-furaffinity/**
+    - Cargo.lock
 
 - name: Build Ingester Weasyl
   image: plugins/docker
@@ -98,11 +107,14 @@ steps:
   when:
     branch:
     - master
+    event:
+    - push
     paths:
     - fuzzysearch-ingest-weasyl/**
+    - Cargo.lock
 
 ---
 kind: signature
-hmac: 82ee084d72d5ef16c8fb5b756ea1cce82691d3510305b0665c9c618aa9fb4d18
+hmac: 6c87d24325f6646ff0fe06eaf62e94cf53508cdf73dc303607e7ec74a8b4486e
 
 ...
