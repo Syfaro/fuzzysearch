@@ -189,10 +189,62 @@ impl futures_retry::ErrorHandler<furaffinity_rs::Error> for RetryHandler {
             return futures_retry::RetryPolicy::ForwardError(err);
         }
 
-        return futures_retry::RetryPolicy::WaitRetry(std::time::Duration::from_secs(
-            1 + attempt as u64,
-        ));
+        futures_retry::RetryPolicy::WaitRetry(std::time::Duration::from_secs(1 + attempt as u64))
     }
+}
+
+#[tracing::instrument(skip(client, fa))]
+async fn process_submission(client: &Client, fa: &furaffinity_rs::FurAffinity, id: i32) {
+    if has_submission(&client, id).await {
+        return;
+    }
+
+    tracing::info!("Loading submission");
+
+    let _timer = SUBMISSION_DURATION.start_timer();
+
+    let sub = futures_retry::FutureRetry::new(|| fa.get_submission(id), RetryHandler::new(3))
+        .await
+        .map(|(sub, _attempts)| sub)
+        .map_err(|(err, _attempts)| err);
+
+    let sub = match sub {
+        Ok(sub) => sub,
+        Err(err) => {
+            tracing::error!("Failed to load submission: {:?}", err);
+            _timer.stop_and_discard();
+            insert_null_submission(&client, id).await.unwrap_or_log();
+            return;
+        }
+    };
+
+    let sub = match sub {
+        Some(sub) => sub,
+        None => {
+            tracing::warn!("Submission did not exist");
+            _timer.stop_and_discard();
+            insert_null_submission(&client, id).await.unwrap_or_log();
+            return;
+        }
+    };
+
+    let image =
+        futures_retry::FutureRetry::new(|| fa.calc_image_hash(sub.clone()), RetryHandler::new(3))
+            .await
+            .map(|(sub, _attempt)| sub)
+            .map_err(|(err, _attempt)| err);
+
+    let sub = match image {
+        Ok(sub) => sub,
+        Err(err) => {
+            tracing::error!("Unable to hash submission image: {:?}", err);
+            sub
+        }
+    };
+
+    _timer.stop_and_record();
+
+    insert_submission(&client, &sub).await.unwrap_or_log();
 }
 
 #[tokio::main]
@@ -210,12 +262,7 @@ async fn main() {
         .build()
         .unwrap_or_log();
 
-    let fa = std::sync::Arc::new(furaffinity_rs::FurAffinity::new(
-        cookie_a,
-        cookie_b,
-        user_agent,
-        Some(client),
-    ));
+    let fa = furaffinity_rs::FurAffinity::new(cookie_a, cookie_b, user_agent, Some(client));
 
     let dsn = std::env::var("POSTGRES_DSN").expect_or_log("Missing POSTGRES_DSN");
 
@@ -254,59 +301,7 @@ async fn main() {
             .set(online.other as i64);
 
         for id in ids_to_check(&client, latest_id.0).await {
-            if has_submission(&client, id).await {
-                continue;
-            }
-
-            tracing::info!(id, "Loading submission");
-
-            let _timer = SUBMISSION_DURATION.start_timer();
-
-            let sub =
-                futures_retry::FutureRetry::new(|| fa.get_submission(id), RetryHandler::new(3))
-                    .await
-                    .map(|(sub, _attempts)| sub)
-                    .map_err(|(err, _attempts)| err);
-
-            let sub = match sub {
-                Ok(sub) => sub,
-                Err(err) => {
-                    tracing::error!(id, "Failed to load submission: {:?}", err);
-                    _timer.stop_and_discard();
-                    insert_null_submission(&client, id).await.unwrap_or_log();
-                    continue;
-                }
-            };
-
-            let sub = match sub {
-                Some(sub) => sub,
-                None => {
-                    tracing::warn!(id, "Submission did not exist");
-                    _timer.stop_and_discard();
-                    insert_null_submission(&client, id).await.unwrap_or_log();
-                    continue;
-                }
-            };
-
-            let image = futures_retry::FutureRetry::new(
-                || fa.calc_image_hash(sub.clone()),
-                RetryHandler::new(3),
-            )
-            .await
-            .map(|(sub, _attempt)| sub)
-            .map_err(|(err, _attempt)| err);
-
-            let sub = match image {
-                Ok(sub) => sub,
-                Err(err) => {
-                    tracing::error!(id, "Unable to hash submission image: {:?}", err);
-                    sub
-                }
-            };
-
-            _timer.stop_and_record();
-
-            insert_submission(&client, &sub).await.unwrap_or_log();
+            process_submission(&client, &fa, id).await;
         }
 
         tracing::info!("Completed fetch, waiting a minute before loading more");
