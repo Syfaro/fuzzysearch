@@ -144,7 +144,7 @@ async fn web() {
 
     let server = hyper::Server::bind(&addr).serve(service);
 
-    println!("Listening on http://{}", addr);
+    tracing::info!("Listening on http://{}", addr);
 
     server.await.unwrap();
 }
@@ -162,23 +162,21 @@ impl RetryHandler {
 impl futures_retry::ErrorHandler<furaffinity_rs::Error> for RetryHandler {
     type OutError = furaffinity_rs::Error;
 
+    #[tracing::instrument(skip(self), fields(max_attempts = self.max_attempts))]
     fn handle(
         &mut self,
         attempt: usize,
         err: furaffinity_rs::Error,
     ) -> futures_retry::RetryPolicy<Self::OutError> {
-        println!(
-            "Attempt {}/{} has failed: {:?}",
-            attempt, self.max_attempts, err
-        );
+        tracing::warn!("Attempt failed");
 
         if attempt >= self.max_attempts {
-            println!("All attempts have been used");
+            tracing::error!("All attempts have been used");
             return futures_retry::RetryPolicy::ForwardError(err);
         }
 
         if !err.retry {
-            println!("Error did not ask for retry");
+            tracing::error!("Error did not ask for retry");
             return futures_retry::RetryPolicy::ForwardError(err);
         }
 
@@ -190,6 +188,8 @@ impl futures_retry::ErrorHandler<furaffinity_rs::Error> for RetryHandler {
 
 #[tokio::main]
 async fn main() {
+    tracing_subscriber::fmt::init();
+
     let (cookie_a, cookie_b) = (
         std::env::var("FA_A").expect("Missing FA_A"),
         std::env::var("FA_B").expect("Missing FA_B"),
@@ -222,19 +222,19 @@ async fn main() {
 
     tokio::spawn(async move { web().await });
 
-    println!("Started");
+    tracing::info!("Started");
 
     loop {
-        print!("Fetching latest ID... ");
+        tracing::debug!("Fetching latest ID... ");
         let latest_id = fa.latest_id().await.expect("unable to get latest id");
-        println!("{}", latest_id);
+        tracing::info!(latest_id, "Got latest ID");
 
         for id in ids_to_check(&client, latest_id).await {
             if has_submission(&client, id).await {
                 continue;
             }
 
-            println!("Loading submission {}", id);
+            tracing::info!(id, "Loading submission");
 
             let _timer = SUBMISSION_DURATION.start_timer();
 
@@ -247,7 +247,7 @@ async fn main() {
             let sub = match sub {
                 Ok(sub) => sub,
                 Err(err) => {
-                    println!("Failed to load submission {}: {:?}", id, err);
+                    tracing::error!(id, "Failed to load submission: {:?}", err);
                     _timer.stop_and_discard();
                     insert_null_submission(&client, id).await.unwrap();
                     continue;
@@ -257,7 +257,7 @@ async fn main() {
             let sub = match sub {
                 Some(sub) => sub,
                 None => {
-                    println!("Submission {} did not exist", id);
+                    tracing::warn!(id, "Submission did not exist");
                     _timer.stop_and_discard();
                     insert_null_submission(&client, id).await.unwrap();
                     continue;
@@ -275,7 +275,7 @@ async fn main() {
             let sub = match image {
                 Ok(sub) => sub,
                 Err(err) => {
-                    println!("Unable to hash submission {} image: {:?}", id, err);
+                    tracing::error!(id, "Unable to hash submission image: {:?}", err);
                     sub
                 }
             };
@@ -285,7 +285,7 @@ async fn main() {
             insert_submission(&client, &sub).await.unwrap();
         }
 
-        println!("Completed fetch, waiting a minute before loading more");
+        tracing::info!("Completed fetch, waiting a minute before loading more");
         tokio::time::sleep(std::time::Duration::from_secs(60)).await;
     }
 }
