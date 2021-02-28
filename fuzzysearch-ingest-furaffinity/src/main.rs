@@ -1,19 +1,20 @@
 use lazy_static::lazy_static;
 use tokio_postgres::Client;
+use tracing_unwrap::{OptionExt, ResultExt};
 
 lazy_static! {
     static ref SUBMISSION_DURATION: prometheus::Histogram = prometheus::register_histogram!(
         "fuzzysearch_watcher_fa_processing_seconds",
         "Duration to process a submission"
     )
-    .unwrap();
+    .unwrap_or_log();
 }
 
 async fn lookup_tag(client: &Client, tag: &str) -> i32 {
     if let Some(row) = client
         .query("SELECT id FROM tag WHERE name = $1", &[&tag])
         .await
-        .unwrap()
+        .unwrap_or_log()
         .into_iter()
         .next()
     {
@@ -23,10 +24,10 @@ async fn lookup_tag(client: &Client, tag: &str) -> i32 {
     client
         .query("INSERT INTO tag (name) VALUES ($1) RETURNING id", &[&tag])
         .await
-        .unwrap()
+        .unwrap_or_log()
         .into_iter()
         .next()
-        .unwrap()
+        .unwrap_or_log()
         .get("id")
 }
 
@@ -34,7 +35,7 @@ async fn lookup_artist(client: &Client, artist: &str) -> i32 {
     if let Some(row) = client
         .query("SELECT id FROM artist WHERE name = $1", &[&artist])
         .await
-        .unwrap()
+        .unwrap_or_log()
         .into_iter()
         .next()
     {
@@ -47,10 +48,10 @@ async fn lookup_artist(client: &Client, artist: &str) -> i32 {
             &[&artist],
         )
         .await
-        .unwrap()
+        .unwrap_or_log()
         .into_iter()
         .next()
-        .unwrap()
+        .unwrap_or_log()
         .get("id")
 }
 
@@ -58,14 +59,14 @@ async fn has_submission(client: &Client, id: i32) -> bool {
     client
         .query("SELECT id FROM submission WHERE id = $1", &[&id])
         .await
-        .expect("Unable to run query")
+        .unwrap_or_log()
         .into_iter()
         .next()
         .is_some()
 }
 
 async fn ids_to_check(client: &Client, max: i32) -> Vec<i32> {
-    let rows = client.query("SELECT sid FROM generate_series((SELECT max(id) FROM submission), $1::int) sid WHERE sid NOT IN (SELECT id FROM submission where id = sid)", &[&max]).await.unwrap();
+    let rows = client.query("SELECT sid FROM generate_series((SELECT max(id) FROM submission), $1::int) sid WHERE sid NOT IN (SELECT id FROM submission where id = sid)", &[&max]).await.unwrap_or_log();
 
     rows.iter().map(|row| row.get("sid")).collect()
 }
@@ -119,7 +120,9 @@ async fn request(
 
             let metric_families = prometheus::gather();
             let mut buffer = vec![];
-            encoder.encode(&metric_families, &mut buffer).unwrap();
+            encoder
+                .encode(&metric_families, &mut buffer)
+                .unwrap_or_log();
 
             Ok(hyper::Response::new(hyper::Body::from(buffer)))
         }
@@ -136,9 +139,9 @@ async fn web() {
     use hyper::service::{make_service_fn, service_fn};
 
     let addr: std::net::SocketAddr = std::env::var("HTTP_HOST")
-        .expect("Missing HTTP_HOST")
+        .expect_or_log("Missing HTTP_HOST")
         .parse()
-        .unwrap();
+        .unwrap_or_log();
 
     let service = make_service_fn(|_| async { Ok::<_, hyper::Error>(service_fn(request)) });
 
@@ -146,7 +149,7 @@ async fn web() {
 
     tracing::info!("Listening on http://{}", addr);
 
-    server.await.unwrap();
+    server.await.unwrap_or_log();
 }
 
 struct RetryHandler {
@@ -191,15 +194,15 @@ async fn main() {
     tracing_subscriber::fmt::init();
 
     let (cookie_a, cookie_b) = (
-        std::env::var("FA_A").expect("Missing FA_A"),
-        std::env::var("FA_B").expect("Missing FA_B"),
+        std::env::var("FA_A").expect_or_log("Missing FA_A"),
+        std::env::var("FA_B").expect_or_log("Missing FA_B"),
     );
 
-    let user_agent = std::env::var("USER_AGENT").expect("Missing USER_AGENT");
+    let user_agent = std::env::var("USER_AGENT").expect_or_log("Missing USER_AGENT");
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
         .build()
-        .unwrap();
+        .unwrap_or_log();
 
     let fa = std::sync::Arc::new(furaffinity_rs::FurAffinity::new(
         cookie_a,
@@ -208,11 +211,11 @@ async fn main() {
         Some(client),
     ));
 
-    let dsn = std::env::var("POSTGRES_DSN").expect("Missing POSTGRES_DSN");
+    let dsn = std::env::var("POSTGRES_DSN").expect_or_log("Missing POSTGRES_DSN");
 
     let (client, connection) = tokio_postgres::connect(&dsn, tokio_postgres::NoTls)
         .await
-        .unwrap();
+        .unwrap_or_log();
 
     tokio::spawn(async move {
         if let Err(e) = connection.await {
@@ -226,7 +229,10 @@ async fn main() {
 
     loop {
         tracing::debug!("Fetching latest ID... ");
-        let latest_id = fa.latest_id().await.expect("Unable to get latest id");
+        let latest_id = fa
+            .latest_id()
+            .await
+            .expect_or_log("Unable to get latest id");
         tracing::info!(latest_id, "Got latest ID");
 
         for id in ids_to_check(&client, latest_id).await {
@@ -249,7 +255,7 @@ async fn main() {
                 Err(err) => {
                     tracing::error!(id, "Failed to load submission: {:?}", err);
                     _timer.stop_and_discard();
-                    insert_null_submission(&client, id).await.unwrap();
+                    insert_null_submission(&client, id).await.unwrap_or_log();
                     continue;
                 }
             };
@@ -259,7 +265,7 @@ async fn main() {
                 None => {
                     tracing::warn!(id, "Submission did not exist");
                     _timer.stop_and_discard();
-                    insert_null_submission(&client, id).await.unwrap();
+                    insert_null_submission(&client, id).await.unwrap_or_log();
                     continue;
                 }
             };
@@ -282,7 +288,7 @@ async fn main() {
 
             _timer.stop_and_record();
 
-            insert_submission(&client, &sub).await.unwrap();
+            insert_submission(&client, &sub).await.unwrap_or_log();
         }
 
         tracing::info!("Completed fetch, waiting a minute before loading more");
