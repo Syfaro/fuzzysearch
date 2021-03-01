@@ -61,3 +61,40 @@ pub enum SiteInfo {
     },
     Twitter,
 }
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct WebHookData {
+    pub site: i32,
+
+    pub id: i32,
+    pub artist: String,
+    pub file_url: String,
+    #[serde(with = "b64")]
+    pub file_sha256: Option<Vec<u8>>,
+}
+
+mod b64 {
+    use serde::Deserialize;
+
+    pub fn serialize<S>(bytes: &Option<Vec<u8>>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match bytes {
+            Some(bytes) => serializer.serialize_str(&base64::encode(bytes)),
+            None => serializer.serialize_none(),
+        }
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<Vec<u8>>, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let val = <Option<String>>::deserialize(deserializer)?
+            .map(base64::decode)
+            .transpose()
+            .map_err(serde::de::Error::custom)?;
+
+        Ok(val)
+    }
+}
