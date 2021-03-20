@@ -9,7 +9,7 @@ tracing = "0.1"
 tracing-subscriber = "0.2"
 tracing-futures = "0.2"
 
-prometheus = { version = "0.11", features = ["process"] }
+prometheus = { version = "0.12", features = ["process"] }
 lazy_static = "1"
 
 opentelemetry = "0.6"
