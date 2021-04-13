@@ -341,20 +341,3 @@ async fn create_metrics_server() {
 
     tokio::spawn(async move { server.await.expect("Metrics server error") });
 }
-
-#[cfg(test)]
-mod tests {
-    #[tokio::test]
-    async fn test_get_latest_id() {
-        let client = reqwest::ClientBuilder::new()
-            .user_agent(super::USER_AGENT)
-            .build()
-            .unwrap();
-
-        let latest_id = super::get_latest_id(&client, &("".to_string(), None))
-            .await
-            .expect("No error should occur");
-
-        assert!(latest_id > 1_000_000, "Latest ID should be reasonably high");
-    }
-}
