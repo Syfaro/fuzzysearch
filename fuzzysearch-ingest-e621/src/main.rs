@@ -23,17 +23,25 @@ lazy_static! {
     .unwrap();
 }
 
+type Auth = (String, Option<String>);
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
 
     create_metrics_server().await;
 
+    let login = std::env::var("E621_LOGIN").expect("Missing E621_LOGIN");
+    let api_key = std::env::var("E621_API_KEY").expect("Missing E621_API_KEY");
+    let auth = (login, Some(api_key));
+
     let client = reqwest::ClientBuilder::default()
         .user_agent(USER_AGENT)
         .build()?;
 
-    let mut conn = sqlx::PgConnection::connect(&std::env::var("DATABASE_URL")?).await?;
+    let mut conn =
+        sqlx::PgConnection::connect(&std::env::var("DATABASE_URL").expect("Missing DATABASE_URL"))
+            .await?;
 
     let max_id: i32 = sqlx::query!("SELECT max(id) max FROM e621")
         .fetch_one(&mut conn)
@@ -55,7 +63,7 @@ async fn main() -> anyhow::Result<()> {
             Some(latest_id) => latest_id,
             None => {
                 let _hist = INDEX_DURATION.start_timer();
-                let lid = get_latest_id(&client)
+                let lid = get_latest_id(&client, &auth)
                     .await
                     .expect("Unable to get latest ID");
                 drop(_hist);
@@ -67,7 +75,7 @@ async fn main() -> anyhow::Result<()> {
         };
 
         let _hist = INDEX_DURATION.start_timer();
-        let page = load_page(&client, min_id).await?;
+        let page = load_page(&client, &auth, min_id).await?;
         drop(_hist);
 
         let posts = get_page_posts(&page)?;
@@ -148,8 +156,8 @@ fn get_post_ids(posts: &[serde_json::Value]) -> Vec<i32> {
     ids
 }
 
-#[tracing::instrument(err, skip(client))]
-async fn get_latest_id(client: &reqwest::Client) -> anyhow::Result<i32> {
+#[tracing::instrument(err, skip(client, auth))]
+async fn get_latest_id(client: &reqwest::Client, auth: &Auth) -> anyhow::Result<i32> {
     tracing::debug!("Looking up current highest ID");
 
     let query = vec![("limit", "1")];
@@ -157,6 +165,7 @@ async fn get_latest_id(client: &reqwest::Client) -> anyhow::Result<i32> {
     let page: serde_json::Value = client
         .get("https://e621.net/posts.json")
         .query(&query)
+        .basic_auth(&auth.0, auth.1.as_ref())
         .send()
         .await?
         .json()
@@ -174,8 +183,12 @@ async fn get_latest_id(client: &reqwest::Client) -> anyhow::Result<i32> {
     Ok(id)
 }
 
-#[tracing::instrument(err, skip(client))]
-async fn load_page(client: &reqwest::Client, after_id: i32) -> anyhow::Result<serde_json::Value> {
+#[tracing::instrument(err, skip(client, auth))]
+async fn load_page(
+    client: &reqwest::Client,
+    auth: &Auth,
+    after_id: i32,
+) -> anyhow::Result<serde_json::Value> {
     tracing::debug!("Attempting to load page");
 
     let query = vec![
@@ -186,6 +199,7 @@ async fn load_page(client: &reqwest::Client, after_id: i32) -> anyhow::Result<se
     let body = client
         .get("https://e621.net/posts.json")
         .query(&query)
+        .basic_auth(&auth.0, auth.1.as_ref())
         .send()
         .await?
         .json()
@@ -326,21 +340,4 @@ async fn create_metrics_server() {
     let server = Server::bind(&addr).serve(make_svc);
 
     tokio::spawn(async move { server.await.expect("Metrics server error") });
-}
-
-#[cfg(test)]
-mod tests {
-    #[tokio::test]
-    async fn test_get_latest_id() {
-        let client = reqwest::ClientBuilder::new()
-            .user_agent(super::USER_AGENT)
-            .build()
-            .unwrap();
-
-        let latest_id = super::get_latest_id(&client)
-            .await
-            .expect("No error should occur");
-
-        assert!(latest_id > 1_000_000, "Latest ID should be reasonably high");
-    }
 }

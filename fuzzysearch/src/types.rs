@@ -30,6 +30,7 @@ pub struct FileSearchOpts {
     pub id: Option<i32>,
     pub name: Option<String>,
     pub url: Option<String>,
+    pub site_id: Option<i32>,
 }
 
 #[derive(Debug, Deserialize)]

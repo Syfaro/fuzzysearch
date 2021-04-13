@@ -13,7 +13,7 @@ r2d2_postgres = " 0.18.0"
 r2d2 = "0.8"
 chrono = "0.4"
 hyper = { version = "0.14", features = ["server"] }
-prometheus = { version = "0.11", features = ["process"] }
+prometheus = { version = "0.12", features = ["process"] }
 lazy_static = "1"
 futures-retry = "0.6"
 tracing = "0.1"

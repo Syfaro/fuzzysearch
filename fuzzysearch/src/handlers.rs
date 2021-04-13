@@ -391,6 +391,27 @@ pub async fn search_file(
                 LIMIT 10",
         )
         .bind(url)
+    } else if let Some(ref site_id) = opts.site_id {
+        sqlx::query(
+            "SELECT
+                    submission.id,
+                    submission.url,
+                    submission.filename,
+                    submission.file_id,
+                    submission.rating,
+                    artist.name,
+                    hashes.id hash_id
+                FROM
+                    submission
+                JOIN artist
+                    ON artist.id = submission.artist_id
+                JOIN hashes
+                    ON hashes.furaffinity_id = submission.id
+                WHERE
+                    submission.id = $1
+                LIMIT 10",
+        )
+        .bind(site_id)
     } else {
         return Ok(Box::new(Error::InvalidData));
     };
