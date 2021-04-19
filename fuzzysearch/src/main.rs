@@ -14,14 +14,19 @@ type Tree = Arc<RwLock<bk_tree::BKTree<Node, Hamming>>>;
 type Pool = sqlx::PgPool;
 
 #[derive(Debug)]
-pub struct Node {
-    id: i32,
-    hash: [u8; 8],
-}
+pub struct Node(pub [u8; 8]);
 
 impl Node {
+    pub fn new(hash: i64) -> Self {
+        Self(hash.to_be_bytes())
+    }
+
     pub fn query(hash: [u8; 8]) -> Self {
-        Self { id: -1, hash }
+        Self(hash)
+    }
+
+    pub fn num(&self) -> i64 {
+        i64::from_be_bytes(self.0)
     }
 }
 
@@ -29,7 +34,7 @@ pub struct Hamming;
 
 impl bk_tree::Metric<Node> for Hamming {
     fn distance(&self, a: &Node, b: &Node) -> u64 {
-        hamming::distance_fast(&a.hash, &b.hash).unwrap()
+        hamming::distance_fast(&a.0, &b.0).unwrap()
     }
 }
 
@@ -167,7 +172,6 @@ async fn serve_metrics() {
 
 #[derive(serde::Deserialize)]
 struct HashRow {
-    id: i32,
     hash: i64,
 }
 
@@ -176,13 +180,25 @@ async fn create_tree(conn: &Pool) -> bk_tree::BKTree<Node, Hamming> {
 
     let mut tree = bk_tree::BKTree::new(Hamming);
 
-    let mut rows = sqlx::query_as!(HashRow, "SELECT id, hash FROM hashes").fetch(conn);
+    let mut rows = sqlx::query!(
+        "SELECT id, hash_int hash FROM submission WHERE hash_int IS NOT NULL
+        UNION ALL
+        SELECT id, hash FROM e621 WHERE hash IS NOT NULL
+        UNION ALL
+        SELECT tweet_id, hash FROM tweet_media WHERE hash IS NOT NULL
+        UNION ALL
+        SELECT id, hash FROM weasyl WHERE hash IS NOT NULL"
+    )
+    .fetch(conn);
 
     while let Some(row) = rows.try_next().await.expect("Unable to get row") {
-        tree.add(Node {
-            id: row.id,
-            hash: row.hash.to_be_bytes(),
-        })
+        if let Some(hash) = row.hash {
+            if tree.find_exact(&Node::new(hash)).is_some() {
+                continue;
+            }
+
+            tree.add(Node::new(hash));
+        }
     }
 
     tree
@@ -207,13 +223,16 @@ async fn load_updates(conn: Pool, tree: Tree) {
                 .expect("Unable to recv notification")
             {
                 let payload: HashRow = serde_json::from_str(notification.payload()).unwrap();
-                tracing::debug!(id = payload.id, "Adding new hash to tree");
+                tracing::debug!(hash = payload.hash, "Adding new hash to tree");
+
+                let lock = tree.read().await;
+                if lock.find_exact(&Node::new(payload.hash)).is_some() {
+                    continue;
+                }
+                drop(lock);
 
                 let mut lock = tree.write().await;
-                lock.add(Node {
-                    id: payload.id,
-                    hash: payload.hash.to_be_bytes(),
-                });
+                lock.add(Node(payload.hash.to_be_bytes()));
                 drop(lock);
             }
 

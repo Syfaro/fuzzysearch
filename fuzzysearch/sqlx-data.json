@@ -23,81 +23,25 @@
       ]
     }
   },
-  "1bd0057782de5a3b41f90081a31d24d14bb70299391050c3404742a6d2915d9e": {
-    "query": "SELECT\n                        hashes.id,\n                        hashes.hash,\n                        hashes.furaffinity_id,\n                        hashes.e621_id,\n                        hashes.twitter_id,\n                    CASE\n                        WHEN furaffinity_id IS NOT NULL THEN (f.url)\n                        WHEN e621_id IS NOT NULL THEN (e.data->'file'->>'url')\n                        WHEN twitter_id IS NOT NULL THEN (tm.url)\n                    END url,\n                    CASE\n                        WHEN furaffinity_id IS NOT NULL THEN (f.filename)\n                        WHEN e621_id IS NOT NULL THEN ((e.data->'file'->>'md5') || '.' || (e.data->'file'->>'ext'))\n                        WHEN twitter_id IS NOT NULL THEN (SELECT split_part(split_part(tm.url, '/', 5), ':', 1))\n                    END filename,\n                    CASE\n                        WHEN furaffinity_id IS NOT NULL THEN (ARRAY(SELECT f.name))\n                        WHEN e621_id IS NOT NULL THEN ARRAY(SELECT jsonb_array_elements_text(e.data->'tags'->'artist'))\n                        WHEN twitter_id IS NOT NULL THEN ARRAY(SELECT tw.data->'user'->>'screen_name')\n                    END artists,\n                    CASE\n                        WHEN furaffinity_id IS NOT NULL THEN (f.file_id)\n                    END file_id,\n                    CASE\n                        WHEN e621_id IS NOT NULL THEN ARRAY(SELECT jsonb_array_elements_text(e.data->'sources'))\n                    END sources,\n                    CASE\n                        WHEN furaffinity_id IS NOT NULL THEN (f.rating)\n                        WHEN e621_id IS NOT NULL THEN (e.data->>'rating')\n                        WHEN twitter_id IS NOT NULL THEN\n                            CASE\n                                WHEN (tw.data->'possibly_sensitive')::boolean IS true THEN 'adult'\n                                WHEN (tw.data->'possibly_sensitive')::boolean IS false THEN 'general'\n                            END\n                    END rating\n                FROM\n                    hashes\n                LEFT JOIN LATERAL (\n                    SELECT *\n                    FROM submission\n                    JOIN artist ON submission.artist_id = artist.id\n                    WHERE submission.id = hashes.furaffinity_id\n                ) f ON hashes.furaffinity_id IS NOT NULL\n                LEFT JOIN LATERAL (\n                    SELECT *\n                    FROM e621\n                    WHERE e621.id = hashes.e621_id\n                ) e ON hashes.e621_id IS NOT NULL\n                LEFT JOIN LATERAL (\n                    SELECT *\n                    FROM tweet\n                    WHERE tweet.id = hashes.twitter_id\n                ) tw ON hashes.twitter_id IS NOT NULL\n                LEFT JOIN LATERAL (\n                    SELECT *\n                    FROM tweet_media\n                    WHERE\n                        tweet_media.tweet_id = hashes.twitter_id AND\n                        tweet_media.hash <@ (hashes.hash, 0)\n                    LIMIT 1\n                ) tm ON hashes.twitter_id IS NOT NULL\n                WHERE hashes.id = $1",
+  "1fc936eeccf8260ca00d7758efdbbb74bd58900107d9dc05f881555f068238c6": {
+    "query": "SELECT id, hash_int hash FROM submission WHERE hash_int IS NOT NULL\n        UNION ALL\n        SELECT id, hash FROM e621 WHERE hash IS NOT NULL\n        UNION ALL\n        SELECT tweet_id, hash FROM tweet_media WHERE hash IS NOT NULL\n        UNION ALL\n        SELECT id, hash FROM weasyl WHERE hash IS NOT NULL",
     "describe": {
       "columns": [
         {
           "ordinal": 0,
           "name": "id",
-          "type_info": "Int4"
+          "type_info": "Int8"
         },
         {
           "ordinal": 1,
           "name": "hash",
           "type_info": "Int8"
-        },
-        {
-          "ordinal": 2,
-          "name": "furaffinity_id",
-          "type_info": "Int4"
-        },
-        {
-          "ordinal": 3,
-          "name": "e621_id",
-          "type_info": "Int4"
-        },
-        {
-          "ordinal": 4,
-          "name": "twitter_id",
-          "type_info": "Int8"
-        },
-        {
-          "ordinal": 5,
-          "name": "url",
-          "type_info": "Text"
-        },
-        {
-          "ordinal": 6,
-          "name": "filename",
-          "type_info": "Text"
-        },
-        {
-          "ordinal": 7,
-          "name": "artists",
-          "type_info": "TextArray"
-        },
-        {
-          "ordinal": 8,
-          "name": "file_id",
-          "type_info": "Int4"
-        },
-        {
-          "ordinal": 9,
-          "name": "sources",
-          "type_info": "TextArray"
-        },
-        {
-          "ordinal": 10,
-          "name": "rating",
-          "type_info": "Bpchar"
         }
       ],
       "parameters": {
-        "Left": [
-          "Int4"
-        ]
+        "Left": []
       },
       "nullable": [
-        false,
-        false,
-        true,
-        true,
-        true,
-        null,
-        null,
-        null,
-        null,
         null,
         null
       ]
@@ -173,27 +117,71 @@
       ]
     }
   },
-  "fe60be66b2d8a8f02b3bfe06d1f0e57e4bb07e80cba1b379a5f17f6cbd8b075c": {
-    "query": "SELECT id, hash FROM hashes",
+  "f798404b69897f47a732fb6a8e08e843f233803aea5d5a7f04087619dbb55626": {
+    "query": "SELECT\n                            'FurAffinity' site,\n                            submission.id,\n                            submission.hash_int hash,\n                            submission.url,\n                            submission.filename,\n                            ARRAY(SELECT artist.name) artists,\n                            submission.file_id,\n                            null sources,\n                            submission.rating\n                        FROM submission\n                        JOIN artist ON submission.artist_id = artist.id\n                        WHERE hash_int <@ ($1, 0)\n                        UNION\n                        SELECT\n                            'e621' site,\n                            e621.id,\n                            e621.hash,\n                            e621.data->'file'->>'url' url,\n                            (e621.data->'file'->>'md5') || '.' || (e621.data->'file'->>'ext') filename,\n                            ARRAY(SELECT jsonb_array_elements_text(e621.data->'tags'->'artist')) artists,\n                            null file_id,\n                            ARRAY(SELECT jsonb_array_elements_text(e621.data->'sources')) sources,\n                            e621.data->>'rating' rating\n                        FROM e621\n                        WHERE hash <@ ($1, 0)\n                        UNION\n                        SELECT\n                            'Weasyl' site,\n                            weasyl.id,\n                            weasyl.hash,\n                            weasyl.data->>'link' url,\n                            null filename,\n                            ARRAY(SELECT weasyl.data->>'owner_login') artists,\n                            null file_id,\n                            null sources,\n                            weasyl.data->>'rating' rating\n                        FROM weasyl\n                        WHERE hash <@ ($1, 0)\n                        UNION\n                        SELECT\n                            'Twitter' site,\n                            tweet.id,\n                            tweet_media.hash,\n                            tweet_media.url,\n                            null filename,\n                            ARRAY(SELECT tweet.data->'user'->>'screen_name') artists,\n                            null file_id,\n                            null sources,\n                            CASE\n                                WHEN (tweet.data->'possibly_sensitive')::boolean IS true THEN 'adult'\n                                WHEN (tweet.data->'possibly_sensitive')::boolean IS false THEN 'general'\n                            END rating\n                        FROM tweet_media\n                        JOIN tweet ON tweet_media.tweet_id = tweet.id\n                        WHERE hash <@ ($1, 0)",
     "describe": {
       "columns": [
         {
           "ordinal": 0,
-          "name": "id",
-          "type_info": "Int4"
+          "name": "site",
+          "type_info": "Text"
         },
         {
           "ordinal": 1,
+          "name": "id",
+          "type_info": "Int8"
+        },
+        {
+          "ordinal": 2,
           "name": "hash",
           "type_info": "Int8"
+        },
+        {
+          "ordinal": 3,
+          "name": "url",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 4,
+          "name": "filename",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 5,
+          "name": "artists",
+          "type_info": "TextArray"
+        },
+        {
+          "ordinal": 6,
+          "name": "file_id",
+          "type_info": "Int4"
+        },
+        {
+          "ordinal": 7,
+          "name": "sources",
+          "type_info": "TextArray"
+        },
+        {
+          "ordinal": 8,
+          "name": "rating",
+          "type_info": "Bpchar"
         }
       ],
       "parameters": {
-        "Left": []
+        "Left": [
+          "Int8"
+        ]
       },
       "nullable": [
-        false,
-        false
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
       ]
     }
   }
