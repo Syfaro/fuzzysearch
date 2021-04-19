@@ -418,7 +418,6 @@ pub async fn search_file(
 
     let matches: Result<Vec<SearchResult>, _> = query
         .map(|row| SearchResult {
-            id: row.get("hash_id"),
             site_id: row.get::<i32, _>("id") as i64,
             site_id_str: row.get::<i32, _>("id").to_string(),
             url: row.get("url"),
