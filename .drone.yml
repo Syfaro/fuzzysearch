@@ -9,6 +9,7 @@ platform:
 
 steps:
 - name: Run tests
+  pull: always
   image: rust:1-slim-buster
   commands:
   - apt-get update -y
@@ -34,6 +35,7 @@ steps:
     SCCACHE_S3_USE_SSL: true
 
 - name: Build FuzzySearch API
+  pull: always
   image: plugins/docker
   settings:
     auto_tag: true
@@ -54,6 +56,7 @@ steps:
     - Cargo.lock
 
 - name: Build Ingester e621
+  pull: always
   image: plugins/docker
   settings:
     auto_tag: true
@@ -74,6 +77,7 @@ steps:
     - Cargo.lock
 
 - name: Build Ingester FurAffinity
+  pull: always
   image: plugins/docker
   settings:
     auto_tag: true
@@ -94,6 +98,7 @@ steps:
     - Cargo.lock
 
 - name: Build Ingester Weasyl
+  pull: always
   image: plugins/docker
   settings:
     auto_tag: true
@@ -115,6 +120,6 @@ steps:
 
 ---
 kind: signature
-hmac: 6c87d24325f6646ff0fe06eaf62e94cf53508cdf73dc303607e7ec74a8b4486e
+hmac: eef34ef3454a31e09d05c43b06f8639fa6c249a8e3a938bd9e8e0edcb949cc4d
 
 ...
