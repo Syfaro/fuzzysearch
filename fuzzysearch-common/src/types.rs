@@ -26,8 +26,6 @@ impl std::str::FromStr for Rating {
 /// A general type for every result in a search.
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct SearchResult {
-    pub id: i32,
-
     pub site_id: i64,
     pub site_id_str: String,
 
@@ -60,6 +58,7 @@ pub enum SiteInfo {
         sources: Option<Vec<String>>,
     },
     Twitter,
+    Weasyl,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
