@@ -61,11 +61,17 @@ pub enum SiteInfo {
     Weasyl,
 }
 
+#[derive(Copy, Clone, Deserialize, Serialize, Debug)]
+pub enum Site {
+    FurAffinity,
+    E621,
+    Weasyl,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct WebHookData {
-    pub site: i32,
-
-    pub id: i32,
+    pub site: Site,
+    pub site_id: i32,
     pub artist: String,
     pub file_url: String,
     #[serde(with = "b64")]

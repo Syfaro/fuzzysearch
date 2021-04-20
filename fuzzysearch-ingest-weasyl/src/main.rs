@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+use fuzzysearch_common::faktory::FaktoryClient;
+
 #[derive(Debug, Serialize, Deserialize)]
 struct WeasylMediaSubmission {
     #[serde(rename = "mediaid")]
@@ -25,6 +27,7 @@ enum WeasylSubmissionSubtype {
 struct WeasylSubmission {
     #[serde(rename = "submitid")]
     id: i32,
+    owner_login: String,
     media: WeasylMedia,
     subtype: WeasylSubmissionSubtype,
 }
@@ -114,6 +117,7 @@ async fn load_submission(
 async fn process_submission(
     pool: &sqlx::Pool<sqlx::Postgres>,
     client: &reqwest::Client,
+    faktory: &FaktoryClient,
     body: serde_json::Value,
     sub: WeasylSubmission,
 ) -> anyhow::Result<()> {
@@ -142,6 +146,16 @@ async fn process_submission(
     let mut hasher = Sha256::new();
     hasher.update(&data);
     let result: [u8; 32] = hasher.finalize().into();
+
+    faktory
+        .queue_webhook(fuzzysearch_common::types::WebHookData {
+            site: fuzzysearch_common::types::Site::Weasyl,
+            site_id: sub.id,
+            artist: sub.owner_login.clone(),
+            file_url: sub.media.submission.first().unwrap().url.clone(),
+            file_sha256: Some(result.to_vec()),
+        })
+        .await?;
 
     sqlx::query!(
         "INSERT INTO weasyl (id, hash, sha256, file_size, data) VALUES ($1, $2, $3, $4, $5)",
@@ -183,6 +197,11 @@ async fn main() {
 
     let client = reqwest::Client::new();
 
+    let faktory_dsn = std::env::var("FAKTORY_URL").expect("Missing FAKTORY_URL");
+    let faktory = FaktoryClient::connect(faktory_dsn)
+        .await
+        .expect("Unable to connect to Faktory");
+
     loop {
         let min = sqlx::query!("SELECT max(id) id FROM weasyl")
             .fetch_one(&pool)
@@ -203,7 +222,9 @@ async fn main() {
             }
 
             match load_submission(&client, &api_key, id).await.unwrap() {
-                (Some(sub), json) => process_submission(&pool, &client, json, sub).await.unwrap(),
+                (Some(sub), json) => process_submission(&pool, &client, &faktory, json, sub)
+                    .await
+                    .unwrap(),
                 (None, body) => insert_null(&pool, body, id).await.unwrap(),
             }
         }

@@ -3,6 +3,8 @@ use lazy_static::lazy_static;
 use prometheus::{register_histogram, register_int_gauge, Histogram, IntGauge};
 use sqlx::Connection;
 
+use fuzzysearch_common::faktory::FaktoryClient;
+
 static USER_AGENT: &str = "e621-watcher / FuzzySearch Ingester / Syfaro <syfaro@huefox.com>";
 
 lazy_static! {
@@ -42,6 +44,11 @@ async fn main() -> anyhow::Result<()> {
     let mut conn =
         sqlx::PgConnection::connect(&std::env::var("DATABASE_URL").expect("Missing DATABASE_URL"))
             .await?;
+
+    let faktory_dsn = std::env::var("FAKTORY_URL").expect("Missing FAKTORY_URL");
+    let faktory = FaktoryClient::connect(faktory_dsn)
+        .await
+        .expect("Unable to connect to Faktory");
 
     let max_id: i32 = sqlx::query!("SELECT max(id) max FROM e621")
         .fetch_one(&mut conn)
@@ -98,7 +105,7 @@ async fn main() -> anyhow::Result<()> {
 
         for post in posts {
             let _hist = SUBMISSION_DURATION.start_timer();
-            insert_submission(&mut tx, &client, post).await?;
+            insert_submission(&mut tx, &faktory, &client, post).await?;
             drop(_hist);
 
             SUBMISSION_BACKLOG.sub(1);
@@ -210,9 +217,10 @@ async fn load_page(
 
 type ImageData = (Option<i64>, Option<String>, Option<Vec<u8>>);
 
-#[tracing::instrument(err, skip(conn, client, post), fields(id))]
+#[tracing::instrument(err, skip(conn, faktory, client, post), fields(id))]
 async fn insert_submission(
     conn: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    faktory: &FaktoryClient,
     client: &reqwest::Client,
     post: &serde_json::Value,
 ) -> anyhow::Result<()> {
@@ -228,13 +236,40 @@ async fn insert_submission(
     tracing::trace!(?post, "Evaluating post");
 
     let (hash, hash_error, sha256): ImageData = if let Some((url, ext)) = get_post_url_ext(&post) {
-        if url != "/images/deleted-preview.png" && (ext == "jpg" || ext == "png") {
-            load_image(&client, &url).await?
-        } else {
-            tracing::debug!("Ignoring post as it is deleted or not a supported image format");
+        let (hash, hash_error, sha256) =
+            if url != "/images/deleted-preview.png" && (ext == "jpg" || ext == "png") {
+                load_image(&client, &url).await?
+            } else {
+                tracing::debug!("Ignoring post as it is deleted or not a supported image format");
 
-            (None, None, None)
-        }
+                (None, None, None)
+            };
+
+        let artist = post
+            .as_object()
+            .and_then(|post| post.get("tags"))
+            .and_then(|tags| tags.get("artist"))
+            .and_then(|artist| artist.as_array())
+            .map(|artists| {
+                artists
+                    .iter()
+                    .filter_map(|artist| artist.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            })
+            .unwrap_or_default();
+
+        faktory
+            .queue_webhook(fuzzysearch_common::types::WebHookData {
+                site: fuzzysearch_common::types::Site::E621,
+                site_id: id,
+                artist,
+                file_url: url.to_owned(),
+                file_sha256: sha256.clone(),
+            })
+            .await?;
+
+        (hash, hash_error, sha256)
     } else {
         tracing::warn!("Post had missing URL or extension");
 

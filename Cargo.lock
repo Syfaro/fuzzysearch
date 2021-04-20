@@ -1000,6 +1000,7 @@ dependencies = [
  "r2d2_postgres",
  "reqwest",
  "serde_json",
+ "thiserror",
  "tracing",
  "tracing-subscriber",
  "tracing-unwrap",

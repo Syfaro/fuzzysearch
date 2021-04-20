@@ -1,6 +1,6 @@
-use tracing_unwrap::{OptionExt, ResultExt};
-
 use r2d2_postgres::{postgres::NoTls, PostgresConnectionManager};
+use thiserror::Error;
+use tracing_unwrap::ResultExt;
 
 static APP_USER_AGENT: &str = concat!(
     env!("CARGO_PKG_NAME"),
@@ -9,6 +9,20 @@ static APP_USER_AGENT: &str = concat!(
     " - ",
     env!("CARGO_PKG_AUTHORS")
 );
+
+#[derive(Error, Debug)]
+pub enum WebhookError {
+    #[error("invalid data")]
+    Serde(#[from] serde_json::Error),
+    #[error("missing data")]
+    MissingData,
+    #[error("database pool issue")]
+    Pool(#[from] r2d2_postgres::postgres::Error),
+    #[error("database error")]
+    Database(#[from] r2d2::Error),
+    #[error("network error")]
+    Network(#[from] reqwest::Error),
+}
 
 fn main() {
     tracing_subscriber::fmt::init();
@@ -28,36 +42,24 @@ fn main() {
     let mut faktory = faktory::ConsumerBuilder::default();
     faktory.workers(2);
 
-    faktory.register("new_submission", move |job| -> Result<(), reqwest::Error> {
+    faktory.register("new_submission", move |job| -> Result<(), WebhookError> {
         let _span = tracing::info_span!("new_submission", job_id = job.id()).entered();
 
         tracing::trace!("Got job");
 
-        let value: fuzzysearch_common::types::WebHookData =
-            serde_json::value::from_value(job.args().into_iter().next().unwrap_or_log().to_owned())
-                .unwrap_or_log();
+        let data = job
+            .args()
+            .into_iter()
+            .next()
+            .ok_or(WebhookError::MissingData)?
+            .to_owned()
+            .to_owned();
 
-        let mut conn = pool.get().unwrap_or_log();
+        let value: fuzzysearch_common::types::WebHookData = serde_json::value::from_value(data)?;
 
-        for row in conn
-            .query(
-                "
-                SELECT endpoint
-                FROM webhook
-                WHERE
-                    filtered = false OR
-                    exists(
-                        SELECT 1
-                        FROM webhook_filter
-                        WHERE
-                            webhook_id = webhook.id AND
-                            site_id = $1 AND
-                            artist_name = $2
-                    )",
-                &[&value.site, &value.artist],
-            )
-            .unwrap_or_log()
-        {
+        let mut conn = pool.get()?;
+
+        for row in conn.query("SELECT endpoint FROM webhook", &[])? {
             let endpoint: &str = row.get(0);
 
             tracing::debug!(endpoint, "Sending webhook");
