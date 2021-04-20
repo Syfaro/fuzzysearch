@@ -266,6 +266,7 @@ async fn insert_submission(
                 artist,
                 file_url: url.to_owned(),
                 file_sha256: sha256.clone(),
+                hash: hash.map(|hash| hash.to_be_bytes()),
             })
             .await?;
 

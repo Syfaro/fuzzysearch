@@ -154,6 +154,7 @@ async fn process_submission(
             artist: sub.owner_login.clone(),
             file_url: sub.media.submission.first().unwrap().url.clone(),
             file_sha256: Some(result.to_vec()),
+            hash: num.map(|hash| hash.to_be_bytes()),
         })
         .await?;
 

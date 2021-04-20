@@ -258,6 +258,7 @@ async fn process_submission(
             artist: sub.artist.clone(),
             file_url: sub.content.url().clone(),
             file_sha256: sub.file_sha256.clone(),
+            hash: sub.hash_num.map(|hash| hash.to_be_bytes()),
         })
         .await
     {
