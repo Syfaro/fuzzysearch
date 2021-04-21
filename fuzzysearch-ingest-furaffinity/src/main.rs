@@ -249,7 +249,11 @@ async fn process_submission(client: &Client, fa: &furaffinity_rs::FurAffinity, i
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt::init();
+    if matches!(std::env::var("LOG_FMT").as_deref(), Ok("json")) {
+        tracing_subscriber::fmt::Subscriber::builder().json().init();
+    } else {
+        tracing_subscriber::fmt::init();
+    }
 
     let (cookie_a, cookie_b) = (
         std::env::var("FA_A").expect_or_log("Missing FA_A"),

@@ -27,7 +27,11 @@ type Auth = (String, Option<String>);
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt::init();
+    if matches!(std::env::var("LOG_FMT").as_deref(), Ok("json")) {
+        tracing_subscriber::fmt::Subscriber::builder().json().init();
+    } else {
+        tracing_subscriber::fmt::init();
+    }
 
     create_metrics_server().await;
 
