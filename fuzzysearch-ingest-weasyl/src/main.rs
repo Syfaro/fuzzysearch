@@ -75,12 +75,13 @@ async fn load_frontpage(client: &reqwest::Client, api_key: &str) -> anyhow::Resu
     Ok(max as i32)
 }
 
+#[tracing::instrument(skip(client, api_key))]
 async fn load_submission(
     client: &reqwest::Client,
     api_key: &str,
     id: i32,
 ) -> anyhow::Result<(Option<WeasylSubmission>, serde_json::Value)> {
-    println!("Loading submission {}", id);
+    tracing::debug!("Loading submission");
 
     let body: serde_json::Value = client
         .get(&format!(
@@ -114,6 +115,7 @@ async fn load_submission(
     Ok((res, body))
 }
 
+#[tracing::instrument(skip(pool, client, faktory, body, sub), fields(id = sub.id))]
 async fn process_submission(
     pool: &sqlx::Pool<sqlx::Postgres>,
     client: &reqwest::Client,
@@ -121,7 +123,7 @@ async fn process_submission(
     body: serde_json::Value,
     sub: WeasylSubmission,
 ) -> anyhow::Result<()> {
-    println!("Processing submission {}", sub.id);
+    tracing::debug!("Processing submission");
 
     let data = client
         .get(&sub.media.submission.first().unwrap().url)
@@ -138,7 +140,7 @@ async fn process_submission(
         let num = i64::from_be_bytes(bytes);
         Some(num)
     } else {
-        println!("Unable to decode image on submission {}", sub.id);
+        tracing::warn!("Unable to decode image");
 
         None
     };
@@ -172,12 +174,13 @@ async fn process_submission(
     Ok(())
 }
 
+#[tracing::instrument(skip(pool, body))]
 async fn insert_null(
     pool: &sqlx::Pool<sqlx::Postgres>,
     body: serde_json::Value,
     id: i32,
 ) -> anyhow::Result<()> {
-    println!("Inserting null for submission {}", id);
+    tracing::debug!("Inserting null submission");
 
     sqlx::query!("INSERT INTO WEASYL (id, data) VALUES ($1, $2)", id, body)
         .execute(pool)
@@ -188,6 +191,15 @@ async fn insert_null(
 
 #[tokio::main]
 async fn main() {
+    if matches!(std::env::var("LOG_FMT").as_deref(), Ok("json")) {
+        tracing_subscriber::fmt::Subscriber::builder()
+            .json()
+            .with_timer(tracing_subscriber::fmt::time::ChronoUtc::rfc3339())
+            .init();
+    } else {
+        tracing_subscriber::fmt::init();
+    }
+
     let api_key = std::env::var("WEASYL_APIKEY").unwrap();
 
     let pool = sqlx::postgres::PgPoolOptions::new()

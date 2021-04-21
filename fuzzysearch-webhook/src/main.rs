@@ -25,7 +25,14 @@ pub enum WebhookError {
 }
 
 fn main() {
-    tracing_subscriber::fmt::init();
+    if matches!(std::env::var("LOG_FMT").as_deref(), Ok("json")) {
+        tracing_subscriber::fmt::Subscriber::builder()
+            .json()
+            .with_timer(tracing_subscriber::fmt::time::ChronoUtc::rfc3339())
+            .init();
+    } else {
+        tracing_subscriber::fmt::init();
+    }
 
     tracing::info!("Starting...");
 
