@@ -1,3 +1,5 @@
+#[cfg(feature = "queue")]
+pub mod faktory;
 pub mod types;
 #[cfg(feature = "video")]
 pub mod video;

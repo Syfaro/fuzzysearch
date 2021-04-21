@@ -21,7 +21,7 @@ img_hash = "3"
 
 sha2 = "0.9"
 
-fuzzysearch-common = { path = "../fuzzysearch-common" }
+fuzzysearch-common = { path = "../fuzzysearch-common", features = ["queue"] }
 
 [dependencies.sqlx]
 version = "0.5"
