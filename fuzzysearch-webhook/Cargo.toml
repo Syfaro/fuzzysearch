@@ -1,0 +1,20 @@
+[package]
+name = "fuzzysearch-webhook"
+version = "0.1.0"
+authors = ["Syfaro <syfaro@huefox.com>"]
+edition = "2018"
+
+[dependencies]
+tracing = "0.1"
+tracing-subscriber = "0.2"
+tracing-unwrap = "0.9"
+thiserror = "1"
+
+faktory = "0.11"
+reqwest = { version = "0.11", features = ["blocking", "json"] }
+anyhow = "1"
+serde_json = "1"
+r2d2 = "0.8"
+r2d2_postgres = "0.18"
+
+fuzzysearch-common = { path = "../fuzzysearch-common" }

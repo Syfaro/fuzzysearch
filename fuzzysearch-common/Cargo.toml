@@ -8,15 +8,21 @@ edition = "2018"
 default = []
 
 video = ["ffmpeg-next", "tempfile"]
+queue = ["faktory", "tokio", "serde_json"]
 
 [dependencies]
 anyhow = "1"
 tracing = "0.1"
 
 serde = { version = "1", features = ["derive"] }
+base64 = "0.13"
 
 image = "0.23"
 img_hash = "3"
 
 ffmpeg-next = { version = "4", optional = true }
 tempfile = { version = "3", optional = true }
+
+faktory = { version = "0.11", optional = true }
+tokio = { version = "1", features = ["rt"], optional = true }
+serde_json = { version = "1", optional = true }

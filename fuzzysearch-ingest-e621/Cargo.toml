@@ -28,4 +28,4 @@ anyhow = "1"
 lazy_static = "1"
 prometheus = { version = "0.12", features = ["process"] }
 
-fuzzysearch-common = { path = "../fuzzysearch-common" }
+fuzzysearch-common = { path = "../fuzzysearch-common", features = ["queue"] }

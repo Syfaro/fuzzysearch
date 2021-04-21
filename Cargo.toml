@@ -4,7 +4,8 @@ members = [
     "fuzzysearch-common",
     "fuzzysearch-ingest-e621",
     "fuzzysearch-ingest-furaffinity",
-    "fuzzysearch-ingest-weasyl"
+    "fuzzysearch-ingest-weasyl",
+    "fuzzysearch-webhook"
 ]
 
 [profile.dev]

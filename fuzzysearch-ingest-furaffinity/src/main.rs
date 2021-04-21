@@ -2,6 +2,8 @@ use lazy_static::lazy_static;
 use tokio_postgres::Client;
 use tracing_unwrap::{OptionExt, ResultExt};
 
+use fuzzysearch_common::faktory::FaktoryClient;
+
 lazy_static! {
     static ref SUBMISSION_DURATION: prometheus::Histogram = prometheus::register_histogram!(
         "fuzzysearch_watcher_fa_processing_seconds",
@@ -193,8 +195,13 @@ impl futures_retry::ErrorHandler<furaffinity_rs::Error> for RetryHandler {
     }
 }
 
-#[tracing::instrument(skip(client, fa))]
-async fn process_submission(client: &Client, fa: &furaffinity_rs::FurAffinity, id: i32) {
+#[tracing::instrument(skip(client, fa, faktory))]
+async fn process_submission(
+    client: &Client,
+    fa: &furaffinity_rs::FurAffinity,
+    faktory: &FaktoryClient,
+    id: i32,
+) {
     if has_submission(&client, id).await {
         return;
     }
@@ -244,6 +251,20 @@ async fn process_submission(client: &Client, fa: &furaffinity_rs::FurAffinity, i
 
     _timer.stop_and_record();
 
+    if let Err(err) = faktory
+        .queue_webhook(fuzzysearch_common::types::WebHookData {
+            site: fuzzysearch_common::types::Site::FurAffinity,
+            site_id: sub.id,
+            artist: sub.artist.clone(),
+            file_url: sub.content.url().clone(),
+            file_sha256: sub.file_sha256.clone(),
+            hash: sub.hash_num.map(|hash| hash.to_be_bytes()),
+        })
+        .await
+    {
+        tracing::error!("Unable to queue webhook: {:?}", err);
+    }
+
     insert_submission(&client, &sub).await.unwrap_or_log();
 }
 
@@ -278,6 +299,11 @@ async fn main() {
 
     tokio::spawn(async move { web().await });
 
+    let faktory_dsn = std::env::var("FAKTORY_URL").expect_or_log("Missing FAKTORY_URL");
+    let faktory = FaktoryClient::connect(faktory_dsn)
+        .await
+        .expect_or_log("Unable to connect to Faktory");
+
     tracing::info!("Started");
 
     loop {
@@ -301,7 +327,7 @@ async fn main() {
             .set(online.other as i64);
 
         for id in ids_to_check(&client, latest_id.0).await {
-            process_submission(&client, &fa, id).await;
+            process_submission(&client, &fa, &faktory, id).await;
         }
 
         tracing::info!("Completed fetch, waiting a minute before loading more");
