@@ -55,6 +55,27 @@ steps:
     - fuzzysearch/**
     - Cargo.lock
 
+- name: Build FuzzySearch Webhook
+  pull: always
+  image: plugins/docker
+  settings:
+    auto_tag: true
+    dockerfile: fuzzysearch-webhook/Dockerfile
+    password:
+      from_secret: docker_password
+    registry: registry.huefox.com
+    repo: registry.huefox.com/fuzzysearch/webhook
+    username:
+      from_secret: docker_username
+  when:
+    branch:
+    - master
+    event:
+    - push
+    paths:
+    - fuzzysearch-webhook/**
+    - Cargo.lock
+
 - name: Build Ingester e621
   pull: always
   image: plugins/docker
@@ -120,6 +141,6 @@ steps:
 
 ---
 kind: signature
-hmac: eef34ef3454a31e09d05c43b06f8639fa6c249a8e3a938bd9e8e0edcb949cc4d
+hmac: a43b3686de2a1ac6b959596ed9254f0a07453c32f6aadf8098771e6e1e4d9cdc
 
 ...

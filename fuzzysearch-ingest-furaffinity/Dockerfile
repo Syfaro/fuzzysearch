@@ -5,7 +5,7 @@ RUN apt-get update -y && apt-get install -y libssl-dev pkg-config python3 python
 COPY . .
 RUN cargo install --root / --path ./fuzzysearch-ingest-furaffinity
 
-FROM rustlang/rust:nightly-slim
+FROM debian:buster-slim
 RUN apt-get update -y && \
     apt-get install -y openssl ca-certificates python3 python3-pip && \
     python3 -m pip --no-cache-dir install cfscrape && \
