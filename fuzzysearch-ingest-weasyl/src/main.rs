@@ -154,17 +154,6 @@ async fn process_submission(
     hasher.update(&data);
     let result: [u8; 32] = hasher.finalize().into();
 
-    faktory
-        .queue_webhook(fuzzysearch_common::types::WebHookData {
-            site: fuzzysearch_common::types::Site::Weasyl,
-            site_id: sub.id,
-            artist: sub.owner_login.clone(),
-            file_url: sub.media.submission.first().unwrap_or_log().url.clone(),
-            file_sha256: Some(result.to_vec()),
-            hash: num.map(|hash| hash.to_be_bytes()),
-        })
-        .await?;
-
     sqlx::query!(
         "INSERT INTO weasyl (id, hash, sha256, file_size, data) VALUES ($1, $2, $3, $4, $5)",
         sub.id,
@@ -175,6 +164,19 @@ async fn process_submission(
     )
     .execute(pool)
     .await?;
+
+    tracing::info!("Completed submission");
+
+    faktory
+        .queue_webhook(fuzzysearch_common::types::WebHookData {
+            site: fuzzysearch_common::types::Site::Weasyl,
+            site_id: sub.id,
+            artist: sub.owner_login.clone(),
+            file_url: sub.media.submission.first().unwrap_or_log().url.clone(),
+            file_sha256: Some(result.to_vec()),
+            hash: num.map(|hash| hash.to_be_bytes()),
+        })
+        .await?;
 
     Ok(())
 }

@@ -297,6 +297,8 @@ async fn insert_submission(
     .execute(conn)
     .await?;
 
+    tracing::info!("Completed submission");
+
     Ok(())
 }
 
