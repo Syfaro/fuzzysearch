@@ -17,7 +17,6 @@ prometheus = { version = "0.12", features = ["process"] }
 lazy_static = "1"
 futures-retry = "0.6"
 tracing = "0.1"
-tracing-subscriber = "0.2"
 tracing-unwrap = "0.9"
 faktory = "0.11"
 anyhow = "1"

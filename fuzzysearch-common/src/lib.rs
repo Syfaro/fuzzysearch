@@ -14,3 +14,16 @@ pub fn get_hasher() -> img_hash::Hasher<[u8; 8]> {
         .preproc_dct()
         .to_hasher()
 }
+
+/// Initialize the logger. This should only be called by the running binary.
+pub fn init_logger() {
+    if matches!(std::env::var("LOG_FMT").as_deref(), Ok("json")) {
+        tracing_subscriber::fmt::Subscriber::builder()
+            .json()
+            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+            .with_timer(tracing_subscriber::fmt::time::ChronoUtc::rfc3339())
+            .init();
+    } else {
+        tracing_subscriber::fmt::init();
+    }
+}

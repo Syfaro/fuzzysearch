@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use tracing_unwrap::{OptionExt, ResultExt};
 
 use fuzzysearch_common::faktory::FaktoryClient;
 
@@ -130,7 +131,7 @@ async fn process_submission(
     tracing::debug!("Processing submission");
 
     let data = client
-        .get(&sub.media.submission.first().unwrap().url)
+        .get(&sub.media.submission.first().unwrap_or_log().url)
         .send()
         .await?
         .bytes()
@@ -158,7 +159,7 @@ async fn process_submission(
             site: fuzzysearch_common::types::Site::Weasyl,
             site_id: sub.id,
             artist: sub.owner_login.clone(),
-            file_url: sub.media.submission.first().unwrap().url.clone(),
+            file_url: sub.media.submission.first().unwrap_or_log().url.clone(),
             file_sha256: Some(result.to_vec()),
             hash: num.map(|hash| hash.to_be_bytes()),
         })
@@ -195,39 +196,32 @@ async fn insert_null(
 
 #[tokio::main]
 async fn main() {
-    if matches!(std::env::var("LOG_FMT").as_deref(), Ok("json")) {
-        tracing_subscriber::fmt::Subscriber::builder()
-            .json()
-            .with_timer(tracing_subscriber::fmt::time::ChronoUtc::rfc3339())
-            .init();
-    } else {
-        tracing_subscriber::fmt::init();
-    }
+    fuzzysearch_common::init_logger();
 
-    let api_key = std::env::var("WEASYL_APIKEY").unwrap();
+    let api_key = std::env::var("WEASYL_APIKEY").unwrap_or_log();
 
     let pool = sqlx::postgres::PgPoolOptions::new()
         .max_connections(2)
-        .connect(&std::env::var("DATABASE_URL").unwrap())
+        .connect(&std::env::var("DATABASE_URL").unwrap_or_log())
         .await
-        .unwrap();
+        .unwrap_or_log();
 
     let client = reqwest::Client::new();
 
-    let faktory_dsn = std::env::var("FAKTORY_URL").expect("Missing FAKTORY_URL");
+    let faktory_dsn = std::env::var("FAKTORY_URL").expect_or_log("Missing FAKTORY_URL");
     let faktory = FaktoryClient::connect(faktory_dsn)
         .await
-        .expect("Unable to connect to Faktory");
+        .expect_or_log("Unable to connect to Faktory");
 
     loop {
         let min = sqlx::query!("SELECT max(id) id FROM weasyl")
             .fetch_one(&pool)
             .await
-            .unwrap()
+            .unwrap_or_log()
             .id
             .unwrap_or_default();
 
-        let max = load_frontpage(&client, &api_key).await.unwrap();
+        let max = load_frontpage(&client, &api_key).await.unwrap_or_log();
 
         tracing::info!(min, max, "Calculated range of submissions to check");
 
@@ -235,16 +229,16 @@ async fn main() {
             let row: Option<_> = sqlx::query!("SELECT id FROM weasyl WHERE id = $1", id)
                 .fetch_optional(&pool)
                 .await
-                .unwrap();
+                .unwrap_or_log();
             if row.is_some() {
                 continue;
             }
 
-            match load_submission(&client, &api_key, id).await.unwrap() {
+            match load_submission(&client, &api_key, id).await.unwrap_or_log() {
                 (Some(sub), json) => process_submission(&pool, &client, &faktory, json, sub)
                     .await
-                    .unwrap(),
-                (None, body) => insert_null(&pool, body, id).await.unwrap(),
+                    .unwrap_or_log(),
+                (None, body) => insert_null(&pool, body, id).await.unwrap_or_log(),
             }
         }
 

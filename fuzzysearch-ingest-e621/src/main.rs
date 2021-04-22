@@ -2,6 +2,7 @@ use anyhow::Context;
 use lazy_static::lazy_static;
 use prometheus::{register_histogram, register_int_gauge, Histogram, IntGauge};
 use sqlx::Connection;
+use tracing_unwrap::ResultExt;
 
 use fuzzysearch_common::faktory::FaktoryClient;
 
@@ -12,50 +13,44 @@ lazy_static! {
         "fuzzysearch_watcher_e621_submission_backlog",
         "Number of submissions behind the latest ID"
     )
-    .unwrap();
+    .unwrap_or_log();
     static ref INDEX_DURATION: Histogram = register_histogram!(
         "fuzzysearch_watcher_e621_index_duration",
         "Duration to load an index of submissions"
     )
-    .unwrap();
+    .unwrap_or_log();
     static ref SUBMISSION_DURATION: Histogram = register_histogram!(
         "fuzzysearch_watcher_e621_submission_duration",
         "Duration to ingest a submission"
     )
-    .unwrap();
+    .unwrap_or_log();
 }
 
 type Auth = (String, Option<String>);
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    if matches!(std::env::var("LOG_FMT").as_deref(), Ok("json")) {
-        tracing_subscriber::fmt::Subscriber::builder()
-            .json()
-            .with_timer(tracing_subscriber::fmt::time::ChronoUtc::rfc3339())
-            .init();
-    } else {
-        tracing_subscriber::fmt::init();
-    }
+    fuzzysearch_common::init_logger();
 
     create_metrics_server().await;
 
-    let login = std::env::var("E621_LOGIN").expect("Missing E621_LOGIN");
-    let api_key = std::env::var("E621_API_KEY").expect("Missing E621_API_KEY");
+    let login = std::env::var("E621_LOGIN").expect_or_log("Missing E621_LOGIN");
+    let api_key = std::env::var("E621_API_KEY").expect_or_log("Missing E621_API_KEY");
     let auth = (login, Some(api_key));
 
     let client = reqwest::ClientBuilder::default()
         .user_agent(USER_AGENT)
         .build()?;
 
-    let mut conn =
-        sqlx::PgConnection::connect(&std::env::var("DATABASE_URL").expect("Missing DATABASE_URL"))
-            .await?;
+    let mut conn = sqlx::PgConnection::connect(
+        &std::env::var("DATABASE_URL").expect_or_log("Missing DATABASE_URL"),
+    )
+    .await?;
 
-    let faktory_dsn = std::env::var("FAKTORY_URL").expect("Missing FAKTORY_URL");
+    let faktory_dsn = std::env::var("FAKTORY_URL").expect_or_log("Missing FAKTORY_URL");
     let faktory = FaktoryClient::connect(faktory_dsn)
         .await
-        .expect("Unable to connect to Faktory");
+        .expect_or_log("Unable to connect to Faktory");
 
     let max_id: i32 = sqlx::query!("SELECT max(id) max FROM e621")
         .fetch_one(&mut conn)
@@ -79,7 +74,7 @@ async fn main() -> anyhow::Result<()> {
                 let _hist = INDEX_DURATION.start_timer();
                 let lid = get_latest_id(&client, &auth)
                     .await
-                    .expect("Unable to get latest ID");
+                    .expect_or_log("Unable to get latest ID");
                 drop(_hist);
 
                 latest_id = Some(lid);
@@ -100,7 +95,7 @@ async fn main() -> anyhow::Result<()> {
         min_id = match post_ids.iter().max() {
             Some(id) => *id,
             None => {
-                tracing::warn!("Found no new posts, sleeping");
+                tracing::info!("Found no new posts, sleeping");
                 tokio::time::sleep(std::time::Duration::from_secs(60 * 5)).await;
                 continue;
             }
@@ -359,7 +354,9 @@ async fn provide_metrics(
     let encoder = TextEncoder::new();
 
     let metric_families = prometheus::gather();
-    encoder.encode(&metric_families, &mut buffer).unwrap();
+    encoder
+        .encode(&metric_families, &mut buffer)
+        .unwrap_or_log();
 
     Ok(Response::new(Body::from(buffer)))
 }
@@ -376,11 +373,11 @@ async fn create_metrics_server() {
         make_service_fn(|_conn| async { Ok::<_, Infallible>(service_fn(provide_metrics)) });
 
     let addr: SocketAddr = std::env::var("METRICS_HOST")
-        .expect("Missing METRICS_HOST")
+        .expect_or_log("Missing METRICS_HOST")
         .parse()
-        .expect("Invalid METRICS_HOST");
+        .expect_or_log("Invalid METRICS_HOST");
 
     let server = Server::bind(&addr).serve(make_svc);
 
-    tokio::spawn(async move { server.await.expect("Metrics server error") });
+    tokio::spawn(async move { server.await.expect_or_log("Metrics server error") });
 }
