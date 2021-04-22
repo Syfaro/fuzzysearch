@@ -894,8 +894,9 @@ dependencies = [
  "infer",
  "lazy_static",
  "opentelemetry",
+ "opentelemetry-http",
  "opentelemetry-jaeger",
- "prometheus 0.12.0",
+ "prometheus",
  "reqwest",
  "serde",
  "serde_json",
@@ -937,7 +938,7 @@ dependencies = [
  "image",
  "img_hash",
  "lazy_static",
- "prometheus 0.12.0",
+ "prometheus",
  "reqwest",
  "serde",
  "serde_json",
@@ -961,7 +962,7 @@ dependencies = [
  "hyper",
  "lazy_static",
  "postgres",
- "prometheus 0.12.0",
+ "prometheus",
  "r2d2",
  "r2d2_postgres",
  "reqwest",
@@ -1276,7 +1277,7 @@ dependencies = [
  "httparse",
  "httpdate",
  "itoa",
- "pin-project 1.0.7",
+ "pin-project",
  "socket2",
  "tokio",
  "tower-service",
@@ -1844,26 +1845,46 @@ dependencies = [
 
 [[package]]
 name = "opentelemetry"
-version = "0.6.0"
+version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc49c2e2f36870923d158ff0e357c28e2ff581cb7d8d2181ac27198882ca4132"
+checksum = "b91cea1dfd50064e52db033179952d18c770cbc5dfefc8eba45d619357ba3914"
 dependencies = [
+ "async-trait",
  "futures",
+ "js-sys",
  "lazy_static",
  "percent-encoding",
- "pin-project 0.4.28",
- "prometheus 0.7.0",
- "rand 0.7.3",
+ "pin-project",
+ "rand 0.8.3",
+ "thiserror",
+ "tokio",
+ "tokio-stream",
+]
+
+[[package]]
+name = "opentelemetry-http"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ba72bd27f28377a2e4f0f15a040c06ab0e70ea73df0689f8adf4d22d04591a1a"
+dependencies = [
+ "async-trait",
+ "http",
+ "opentelemetry",
+ "thiserror",
 ]
 
 [[package]]
 name = "opentelemetry-jaeger"
-version = "0.5.0"
+version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "adb48b02de79b2d67c2d04e8a0c6140b63830fc6bfde0fdb1e55e74bbb710f57"
+checksum = "ddd4984441954f9ebbe3eebdfc6fd4fa95be6400d403171228779b949f3cd918"
 dependencies = [
+ "async-trait",
+ "lazy_static",
  "opentelemetry",
+ "thiserror",
  "thrift",
+ "tokio",
 ]
 
 [[package]]
@@ -1987,31 +2008,11 @@ dependencies = [
 
 [[package]]
 name = "pin-project"
-version = "0.4.28"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "918192b5c59119d51e0cd221f4d49dde9112824ba717369e903c97d076083d0f"
-dependencies = [
- "pin-project-internal 0.4.28",
-]
-
-[[package]]
-name = "pin-project"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c7509cc106041c40a4518d2af7a61530e1eed0e6285296a3d8c5472806ccc4a4"
 dependencies = [
- "pin-project-internal 1.0.7",
-]
-
-[[package]]
-name = "pin-project-internal"
-version = "0.4.28"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3be26700300be6d9d23264c73211d8190e755b6b5ca7a1b28230025511b52a5e"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
+ "pin-project-internal",
 ]
 
 [[package]]
@@ -2144,20 +2145,6 @@ dependencies = [
  "hex",
  "lazy_static",
  "libc",
-]
-
-[[package]]
-name = "prometheus"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5567486d5778e2c6455b1b90ff1c558f29e751fc018130fa182e15828e728af1"
-dependencies = [
- "cfg-if 0.1.10",
- "fnv",
- "lazy_static",
- "protobuf",
- "quick-error",
- "spin",
 ]
 
 [[package]]
@@ -2775,12 +2762,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "spin"
-version = "0.5.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
-
-[[package]]
 name = "sqlformat"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3174,7 +3155,7 @@ checksum = "e1a5f475f1b9d077ea1017ecbc60890fda8e54942d680ca0b1d2b47cfa2d861b"
 dependencies = [
  "futures-util",
  "log",
- "pin-project 1.0.7",
+ "pin-project",
  "tokio",
  "tungstenite",
 ]
@@ -3238,7 +3219,7 @@ version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "97d095ae15e245a057c8e8451bab9b3ee1e1f68e9ba2b4fbc18d0ac5237835f2"
 dependencies = [
- "pin-project 1.0.7",
+ "pin-project",
  "tracing",
 ]
 
@@ -3255,12 +3236,11 @@ dependencies = [
 
 [[package]]
 name = "tracing-opentelemetry"
-version = "0.5.0"
+version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b64607914c2892f73ebfd19c6777a0dfb3f5457bf3894693dd2125c41b9c208a"
+checksum = "99003208b647dae59dcefc49c98aecaa3512fbc29351685d4b9ef23a9218458e"
 dependencies = [
  "opentelemetry",
- "rand 0.7.3",
  "tracing",
  "tracing-core",
  "tracing-log",
@@ -3477,7 +3457,7 @@ dependencies = [
  "mime_guess",
  "multipart",
  "percent-encoding",
- "pin-project 1.0.7",
+ "pin-project",
  "scoped-tls",
  "serde",
  "serde_json",
