@@ -47,78 +47,8 @@
       ]
     }
   },
-  "659ee9ddc1c5ccd42ba9dc1617440544c30ece449ba3ba7f9d39f447b8af3cfe": {
-    "query": "SELECT\n            api_key.id,\n            api_key.name_limit,\n            api_key.image_limit,\n            api_key.hash_limit,\n            api_key.name,\n            account.email owner_email\n        FROM\n            api_key\n        JOIN account\n            ON account.id = api_key.user_id\n        WHERE\n            api_key.key = $1\n    ",
-    "describe": {
-      "columns": [
-        {
-          "ordinal": 0,
-          "name": "id",
-          "type_info": "Int4"
-        },
-        {
-          "ordinal": 1,
-          "name": "name_limit",
-          "type_info": "Int2"
-        },
-        {
-          "ordinal": 2,
-          "name": "image_limit",
-          "type_info": "Int2"
-        },
-        {
-          "ordinal": 3,
-          "name": "hash_limit",
-          "type_info": "Int2"
-        },
-        {
-          "ordinal": 4,
-          "name": "name",
-          "type_info": "Text"
-        },
-        {
-          "ordinal": 5,
-          "name": "owner_email",
-          "type_info": "Text"
-        }
-      ],
-      "parameters": {
-        "Left": [
-          "Text"
-        ]
-      },
-      "nullable": [
-        false,
-        false,
-        false,
-        false,
-        true,
-        false
-      ]
-    }
-  },
-  "6b8d304fc40fa539ae671e6e24e7978ad271cb7a1cafb20fc4b4096a958d790f": {
-    "query": "SELECT exists(SELECT 1 FROM twitter_user WHERE lower(data->>'screen_name') = lower($1))",
-    "describe": {
-      "columns": [
-        {
-          "ordinal": 0,
-          "name": "exists",
-          "type_info": "Bool"
-        }
-      ],
-      "parameters": {
-        "Left": [
-          "Text"
-        ]
-      },
-      "nullable": [
-        null
-      ]
-    }
-  },
-  "f798404b69897f47a732fb6a8e08e843f233803aea5d5a7f04087619dbb55626": {
-    "query": "SELECT\n                            'FurAffinity' site,\n                            submission.id,\n                            submission.hash_int hash,\n                            submission.url,\n                            submission.filename,\n                            ARRAY(SELECT artist.name) artists,\n                            submission.file_id,\n                            null sources,\n                            submission.rating\n                        FROM submission\n                        JOIN artist ON submission.artist_id = artist.id\n                        WHERE hash_int <@ ($1, 0)\n                        UNION\n                        SELECT\n                            'e621' site,\n                            e621.id,\n                            e621.hash,\n                            e621.data->'file'->>'url' url,\n                            (e621.data->'file'->>'md5') || '.' || (e621.data->'file'->>'ext') filename,\n                            ARRAY(SELECT jsonb_array_elements_text(e621.data->'tags'->'artist')) artists,\n                            null file_id,\n                            ARRAY(SELECT jsonb_array_elements_text(e621.data->'sources')) sources,\n                            e621.data->>'rating' rating\n                        FROM e621\n                        WHERE hash <@ ($1, 0)\n                        UNION\n                        SELECT\n                            'Weasyl' site,\n                            weasyl.id,\n                            weasyl.hash,\n                            weasyl.data->>'link' url,\n                            null filename,\n                            ARRAY(SELECT weasyl.data->>'owner_login') artists,\n                            null file_id,\n                            null sources,\n                            weasyl.data->>'rating' rating\n                        FROM weasyl\n                        WHERE hash <@ ($1, 0)\n                        UNION\n                        SELECT\n                            'Twitter' site,\n                            tweet.id,\n                            tweet_media.hash,\n                            tweet_media.url,\n                            null filename,\n                            ARRAY(SELECT tweet.data->'user'->>'screen_name') artists,\n                            null file_id,\n                            null sources,\n                            CASE\n                                WHEN (tweet.data->'possibly_sensitive')::boolean IS true THEN 'adult'\n                                WHEN (tweet.data->'possibly_sensitive')::boolean IS false THEN 'general'\n                            END rating\n                        FROM tweet_media\n                        JOIN tweet ON tweet_media.tweet_id = tweet.id\n                        WHERE hash <@ ($1, 0)",
+  "3d87281c06f5fe0dddc766d8321be22c2e4e369fa3f8d657c0b17ff354e214d6": {
+    "query": "SELECT\n                            'FurAffinity' site,\n                            submission.id,\n                            submission.hash_int hash,\n                            submission.url,\n                            submission.filename,\n                            ARRAY(SELECT artist.name) artists,\n                            submission.file_id,\n                            null sources,\n                            submission.rating\n                        FROM submission\n                        JOIN artist ON submission.artist_id = artist.id\n                        WHERE hash_int <@ ($1, 0)\n                        UNION ALL\n                        SELECT\n                            'e621' site,\n                            e621.id,\n                            e621.hash,\n                            e621.data->'file'->>'url' url,\n                            (e621.data->'file'->>'md5') || '.' || (e621.data->'file'->>'ext') filename,\n                            ARRAY(SELECT jsonb_array_elements_text(e621.data->'tags'->'artist')) artists,\n                            null file_id,\n                            ARRAY(SELECT jsonb_array_elements_text(e621.data->'sources')) sources,\n                            e621.data->>'rating' rating\n                        FROM e621\n                        WHERE hash <@ ($1, 0)\n                        UNION ALL\n                        SELECT\n                            'Weasyl' site,\n                            weasyl.id,\n                            weasyl.hash,\n                            weasyl.data->>'link' url,\n                            null filename,\n                            ARRAY(SELECT weasyl.data->>'owner_login') artists,\n                            null file_id,\n                            null sources,\n                            weasyl.data->>'rating' rating\n                        FROM weasyl\n                        WHERE hash <@ ($1, 0)\n                        UNION ALL\n                        SELECT\n                            'Twitter' site,\n                            tweet.id,\n                            tweet_media.hash,\n                            tweet_media.url,\n                            null filename,\n                            ARRAY(SELECT tweet.data->'user'->>'screen_name') artists,\n                            null file_id,\n                            null sources,\n                            CASE\n                                WHEN (tweet.data->'possibly_sensitive')::boolean IS true THEN 'adult'\n                                WHEN (tweet.data->'possibly_sensitive')::boolean IS false THEN 'general'\n                            END rating\n                        FROM tweet_media\n                        JOIN tweet ON tweet_media.tweet_id = tweet.id\n                        WHERE hash <@ ($1, 0)",
     "describe": {
       "columns": [
         {
@@ -181,6 +111,76 @@
         null,
         null,
         null,
+        null
+      ]
+    }
+  },
+  "659ee9ddc1c5ccd42ba9dc1617440544c30ece449ba3ba7f9d39f447b8af3cfe": {
+    "query": "SELECT\n            api_key.id,\n            api_key.name_limit,\n            api_key.image_limit,\n            api_key.hash_limit,\n            api_key.name,\n            account.email owner_email\n        FROM\n            api_key\n        JOIN account\n            ON account.id = api_key.user_id\n        WHERE\n            api_key.key = $1\n    ",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int4"
+        },
+        {
+          "ordinal": 1,
+          "name": "name_limit",
+          "type_info": "Int2"
+        },
+        {
+          "ordinal": 2,
+          "name": "image_limit",
+          "type_info": "Int2"
+        },
+        {
+          "ordinal": 3,
+          "name": "hash_limit",
+          "type_info": "Int2"
+        },
+        {
+          "ordinal": 4,
+          "name": "name",
+          "type_info": "Varchar"
+        },
+        {
+          "ordinal": 5,
+          "name": "owner_email",
+          "type_info": "Varchar"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Text"
+        ]
+      },
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        true,
+        false
+      ]
+    }
+  },
+  "6b8d304fc40fa539ae671e6e24e7978ad271cb7a1cafb20fc4b4096a958d790f": {
+    "query": "SELECT exists(SELECT 1 FROM twitter_user WHERE lower(data->>'screen_name') = lower($1))",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "exists",
+          "type_info": "Bool"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Text"
+        ]
+      },
+      "nullable": [
         null
       ]
     }

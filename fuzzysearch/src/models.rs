@@ -116,7 +116,7 @@ pub fn image_query_sync(
                         FROM submission
                         JOIN artist ON submission.artist_id = artist.id
                         WHERE hash_int <@ ($1, 0)
-                        UNION
+                        UNION ALL
                         SELECT
                             'e621' site,
                             e621.id,
@@ -129,7 +129,7 @@ pub fn image_query_sync(
                             e621.data->>'rating' rating
                         FROM e621
                         WHERE hash <@ ($1, 0)
-                        UNION
+                        UNION ALL
                         SELECT
                             'Weasyl' site,
                             weasyl.id,
@@ -142,7 +142,7 @@ pub fn image_query_sync(
                             weasyl.data->>'rating' rating
                         FROM weasyl
                         WHERE hash <@ ($1, 0)
-                        UNION
+                        UNION ALL
                         SELECT
                             'Twitter' site,
                             tweet.id,
