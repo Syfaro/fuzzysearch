@@ -117,13 +117,13 @@ async fn main() -> anyhow::Result<()> {
 
         let elapsed = now.elapsed().as_millis() as u64;
         if post_ids.contains(&lid) {
-            tracing::warn!(lid, "Page contained latest ID, sleeping");
+            tracing::info!(lid, "Page contained latest ID, sleeping");
             tokio::time::sleep(std::time::Duration::from_secs(60 * 5)).await;
 
             latest_id = None;
         } else if elapsed < 1000 {
             let delay = 1000 - elapsed;
-            tracing::warn!(delay, "Delaying before next request");
+            tracing::info!(delay, "Delaying before next request");
             tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
         }
     }
