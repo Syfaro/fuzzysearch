@@ -50,6 +50,7 @@ enum WeasylResponse<T> {
     Response(T),
 }
 
+#[tracing::instrument(skip(client, api_key))]
 async fn load_frontpage(client: &reqwest::Client, api_key: &str) -> anyhow::Result<i32> {
     let resp: WeasylResponse<Vec<serde_json::Value>> = client
         .get("https://www.weasyl.com/api/submissions/frontpage")
@@ -96,7 +97,10 @@ async fn load_submission(
 
     let data: WeasylResponse<WeasylSubmission> = match serde_json::from_value(body.clone()) {
         Ok(data) => data,
-        Err(_err) => return Ok((None, body)),
+        Err(err) => {
+            tracing::error!("Unable to parse submission: {:?}", err);
+            return Ok((None, body));
+        }
     };
 
     let res = match data {
@@ -224,6 +228,8 @@ async fn main() {
             .unwrap_or_default();
 
         let max = load_frontpage(&client, &api_key).await.unwrap();
+
+        tracing::info!(min, max, "Calculated range of submissions to check");
 
         for id in (min + 1)..=max {
             let row: Option<_> = sqlx::query!("SELECT id FROM weasyl WHERE id = $1", id)
