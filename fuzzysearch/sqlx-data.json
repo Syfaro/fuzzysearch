@@ -23,98 +23,6 @@
       ]
     }
   },
-  "1fc936eeccf8260ca00d7758efdbbb74bd58900107d9dc05f881555f068238c6": {
-    "query": "SELECT id, hash_int hash FROM submission WHERE hash_int IS NOT NULL\n        UNION ALL\n        SELECT id, hash FROM e621 WHERE hash IS NOT NULL\n        UNION ALL\n        SELECT tweet_id, hash FROM tweet_media WHERE hash IS NOT NULL\n        UNION ALL\n        SELECT id, hash FROM weasyl WHERE hash IS NOT NULL",
-    "describe": {
-      "columns": [
-        {
-          "ordinal": 0,
-          "name": "id",
-          "type_info": "Int8"
-        },
-        {
-          "ordinal": 1,
-          "name": "hash",
-          "type_info": "Int8"
-        }
-      ],
-      "parameters": {
-        "Left": []
-      },
-      "nullable": [
-        null,
-        null
-      ]
-    }
-  },
-  "3d87281c06f5fe0dddc766d8321be22c2e4e369fa3f8d657c0b17ff354e214d6": {
-    "query": "SELECT\n                            'FurAffinity' site,\n                            submission.id,\n                            submission.hash_int hash,\n                            submission.url,\n                            submission.filename,\n                            ARRAY(SELECT artist.name) artists,\n                            submission.file_id,\n                            null sources,\n                            submission.rating\n                        FROM submission\n                        JOIN artist ON submission.artist_id = artist.id\n                        WHERE hash_int <@ ($1, 0)\n                        UNION ALL\n                        SELECT\n                            'e621' site,\n                            e621.id,\n                            e621.hash,\n                            e621.data->'file'->>'url' url,\n                            (e621.data->'file'->>'md5') || '.' || (e621.data->'file'->>'ext') filename,\n                            ARRAY(SELECT jsonb_array_elements_text(e621.data->'tags'->'artist')) artists,\n                            null file_id,\n                            ARRAY(SELECT jsonb_array_elements_text(e621.data->'sources')) sources,\n                            e621.data->>'rating' rating\n                        FROM e621\n                        WHERE hash <@ ($1, 0)\n                        UNION ALL\n                        SELECT\n                            'Weasyl' site,\n                            weasyl.id,\n                            weasyl.hash,\n                            weasyl.data->>'link' url,\n                            null filename,\n                            ARRAY(SELECT weasyl.data->>'owner_login') artists,\n                            null file_id,\n                            null sources,\n                            weasyl.data->>'rating' rating\n                        FROM weasyl\n                        WHERE hash <@ ($1, 0)\n                        UNION ALL\n                        SELECT\n                            'Twitter' site,\n                            tweet.id,\n                            tweet_media.hash,\n                            tweet_media.url,\n                            null filename,\n                            ARRAY(SELECT tweet.data->'user'->>'screen_name') artists,\n                            null file_id,\n                            null sources,\n                            CASE\n                                WHEN (tweet.data->'possibly_sensitive')::boolean IS true THEN 'adult'\n                                WHEN (tweet.data->'possibly_sensitive')::boolean IS false THEN 'general'\n                            END rating\n                        FROM tweet_media\n                        JOIN tweet ON tweet_media.tweet_id = tweet.id\n                        WHERE hash <@ ($1, 0)",
-    "describe": {
-      "columns": [
-        {
-          "ordinal": 0,
-          "name": "site",
-          "type_info": "Text"
-        },
-        {
-          "ordinal": 1,
-          "name": "id",
-          "type_info": "Int8"
-        },
-        {
-          "ordinal": 2,
-          "name": "hash",
-          "type_info": "Int8"
-        },
-        {
-          "ordinal": 3,
-          "name": "url",
-          "type_info": "Text"
-        },
-        {
-          "ordinal": 4,
-          "name": "filename",
-          "type_info": "Text"
-        },
-        {
-          "ordinal": 5,
-          "name": "artists",
-          "type_info": "TextArray"
-        },
-        {
-          "ordinal": 6,
-          "name": "file_id",
-          "type_info": "Int4"
-        },
-        {
-          "ordinal": 7,
-          "name": "sources",
-          "type_info": "TextArray"
-        },
-        {
-          "ordinal": 8,
-          "name": "rating",
-          "type_info": "Bpchar"
-        }
-      ],
-      "parameters": {
-        "Left": [
-          "Int8"
-        ]
-      },
-      "nullable": [
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null
-      ]
-    }
-  },
   "659ee9ddc1c5ccd42ba9dc1617440544c30ece449ba3ba7f9d39f447b8af3cfe": {
     "query": "SELECT\n            api_key.id,\n            api_key.name_limit,\n            api_key.image_limit,\n            api_key.hash_limit,\n            api_key.name,\n            account.email owner_email\n        FROM\n            api_key\n        JOIN account\n            ON account.id = api_key.user_id\n        WHERE\n            api_key.key = $1\n    ",
     "describe": {
@@ -165,6 +73,86 @@
       ]
     }
   },
+  "68b890a7910000c2737f71aa8817015030095cde28ef61d51720217b5e2c0d11": {
+    "query": "WITH hashes AS (\n            SELECT * FROM jsonb_to_recordset($1::jsonb)\n                AS hashes(searched_hash bigint, found_hash bigint, distance bigint)\n        )\n        SELECT\n            'FurAffinity' site,\n            submission.id,\n            submission.hash_int hash,\n            submission.url,\n            submission.filename,\n            ARRAY(SELECT artist.name) artists,\n            submission.file_id,\n            null sources,\n            submission.rating,\n            hashes.searched_hash,\n            hashes.distance\n        FROM hashes\n        JOIN submission ON hashes.found_hash = submission.hash_int\n        JOIN artist ON submission.artist_id = artist.id\n        WHERE hash_int IN (SELECT hashes.found_hash)\n        UNION ALL\n        SELECT\n            'e621' site,\n            e621.id,\n            e621.hash,\n            e621.data->'file'->>'url' url,\n            (e621.data->'file'->>'md5') || '.' || (e621.data->'file'->>'ext') filename,\n            ARRAY(SELECT jsonb_array_elements_text(e621.data->'tags'->'artist')) artists,\n            null file_id,\n            ARRAY(SELECT jsonb_array_elements_text(e621.data->'sources')) sources,\n            e621.data->>'rating' rating,\n            hashes.searched_hash,\n            hashes.distance\n        FROM hashes\n        JOIN e621 ON hashes.found_hash = e621.hash\n        WHERE e621.hash IN (SELECT hashes.found_hash)\n        UNION ALL\n        SELECT\n            'Weasyl' site,\n            weasyl.id,\n            weasyl.hash,\n            weasyl.data->>'link' url,\n            null filename,\n            ARRAY(SELECT weasyl.data->>'owner_login') artists,\n            null file_id,\n            null sources,\n            weasyl.data->>'rating' rating,\n            hashes.searched_hash,\n            hashes.distance\n        FROM hashes\n        JOIN weasyl ON hashes.found_hash = weasyl.hash\n        WHERE weasyl.hash IN (SELECT hashes.found_hash)\n        UNION ALL\n        SELECT\n            'Twitter' site,\n            tweet.id,\n            tweet_media.hash,\n            tweet_media.url,\n            null filename,\n            ARRAY(SELECT tweet.data->'user'->>'screen_name') artists,\n            null file_id,\n            null sources,\n            CASE\n                WHEN (tweet.data->'possibly_sensitive')::boolean IS true THEN 'adult'\n                WHEN (tweet.data->'possibly_sensitive')::boolean IS false THEN 'general'\n            END rating,\n            hashes.searched_hash,\n            hashes.distance\n        FROM hashes\n        JOIN tweet_media ON hashes.found_hash = tweet_media.hash\n        JOIN tweet ON tweet_media.tweet_id = tweet.id\n        WHERE tweet_media.hash IN (SELECT hashes.found_hash)",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "site",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 1,
+          "name": "id",
+          "type_info": "Int8"
+        },
+        {
+          "ordinal": 2,
+          "name": "hash",
+          "type_info": "Int8"
+        },
+        {
+          "ordinal": 3,
+          "name": "url",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 4,
+          "name": "filename",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 5,
+          "name": "artists",
+          "type_info": "TextArray"
+        },
+        {
+          "ordinal": 6,
+          "name": "file_id",
+          "type_info": "Int4"
+        },
+        {
+          "ordinal": 7,
+          "name": "sources",
+          "type_info": "TextArray"
+        },
+        {
+          "ordinal": 8,
+          "name": "rating",
+          "type_info": "Bpchar"
+        },
+        {
+          "ordinal": 9,
+          "name": "searched_hash",
+          "type_info": "Int8"
+        },
+        {
+          "ordinal": 10,
+          "name": "distance",
+          "type_info": "Int8"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Jsonb"
+        ]
+      },
+      "nullable": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    }
+  },
   "6b8d304fc40fa539ae671e6e24e7978ad271cb7a1cafb20fc4b4096a958d790f": {
     "query": "SELECT exists(SELECT 1 FROM twitter_user WHERE lower(data->>'screen_name') = lower($1))",
     "describe": {
@@ -179,6 +167,24 @@
         "Left": [
           "Text"
         ]
+      },
+      "nullable": [
+        null
+      ]
+    }
+  },
+  "7953d382d35d07effb803c1b80c6efba81e3db90d0abfe3a40cd66b9106ce44d": {
+    "query": "SELECT hash_int hash FROM submission WHERE hash_int IS NOT NULL\n        UNION\n        SELECT hash FROM e621 WHERE hash IS NOT NULL\n        UNION\n        SELECT hash FROM tweet_media WHERE hash IS NOT NULL\n        UNION\n        SELECT hash FROM weasyl WHERE hash IS NOT NULL",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "hash",
+          "type_info": "Int8"
+        }
+      ],
+      "parameters": {
+        "Left": []
       },
       "nullable": [
         null
