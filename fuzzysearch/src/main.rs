@@ -172,11 +172,11 @@ async fn create_tree(conn: &Pool) -> bk_tree::BKTree<Node, Hamming> {
 
     let mut rows = sqlx::query!(
         "SELECT hash_int hash FROM submission WHERE hash_int IS NOT NULL
-        UNION
+        UNION ALL
         SELECT hash FROM e621 WHERE hash IS NOT NULL
-        UNION
+        UNION ALL
         SELECT hash FROM tweet_media WHERE hash IS NOT NULL
-        UNION
+        UNION ALL
         SELECT hash FROM weasyl WHERE hash IS NOT NULL"
     )
     .fetch(conn);
@@ -185,9 +185,12 @@ async fn create_tree(conn: &Pool) -> bk_tree::BKTree<Node, Hamming> {
 
     while let Some(row) = rows.try_next().await.expect("Unable to get row") {
         if let Some(hash) = row.hash {
-            tree.add(Node::new(hash));
-            count += 1;
+            let node = Node::new(hash);
+            if tree.find_exact(&node).is_none() {
+                tree.add(node);
+            }
 
+            count += 1;
             if count % 250_000 == 0 {
                 tracing::debug!(count, "Made progress in loading tree rows");
             }

@@ -173,8 +173,8 @@
       ]
     }
   },
-  "7953d382d35d07effb803c1b80c6efba81e3db90d0abfe3a40cd66b9106ce44d": {
-    "query": "SELECT hash_int hash FROM submission WHERE hash_int IS NOT NULL\n        UNION\n        SELECT hash FROM e621 WHERE hash IS NOT NULL\n        UNION\n        SELECT hash FROM tweet_media WHERE hash IS NOT NULL\n        UNION\n        SELECT hash FROM weasyl WHERE hash IS NOT NULL",
+  "d6a5ed9266d7cf6f08df5e0160c59843a15ef5ef3ccac2e5ccfe2251a50bd0dc": {
+    "query": "SELECT hash_int hash FROM submission WHERE hash_int IS NOT NULL\n        UNION ALL\n        SELECT hash FROM e621 WHERE hash IS NOT NULL\n        UNION ALL\n        SELECT hash FROM tweet_media WHERE hash IS NOT NULL\n        UNION ALL\n        SELECT hash FROM weasyl WHERE hash IS NOT NULL",
     "describe": {
       "columns": [
         {
