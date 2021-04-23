@@ -68,6 +68,16 @@ pub enum Site {
     Weasyl,
 }
 
+impl std::fmt::Display for Site {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::FurAffinity => write!(f, "FurAffinity"),
+            Self::E621 => write!(f, "e621"),
+            Self::Weasyl => write!(f, "Weasyl"),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct WebHookData {
     pub site: Site,
