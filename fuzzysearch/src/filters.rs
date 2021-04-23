@@ -10,7 +10,6 @@ pub fn search(
 ) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
     search_image(db.clone(), tree.clone())
         .or(search_hashes(db.clone(), tree.clone()))
-        .or(stream_search_image(db.clone(), tree.clone()))
         .or(search_file(db.clone()))
         .or(search_video(db.clone()))
         .or(check_handle(db.clone()))
@@ -86,26 +85,6 @@ pub fn search_hashes(
             let span = tracing::info_span!("search_hashes", ?opts);
             span.set_parent(with_telem(headers));
             span.in_scope(|| handlers::search_hashes(opts, db, tree, api_key).in_current_span())
-        })
-}
-
-pub fn stream_search_image(
-    db: Pool,
-    tree: Tree,
-) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
-    warp::path("stream")
-        .and(warp::header::headers_cloned())
-        .and(warp::post())
-        .and(warp::multipart::form().max_length(1024 * 1024 * 10))
-        .and(with_pool(db))
-        .and(with_tree(tree))
-        .and(with_api_key())
-        .and_then(|headers, form, pool, tree, api_key| {
-            use tracing_opentelemetry::OpenTelemetrySpanExt;
-
-            let span = tracing::info_span!("stream_search_image");
-            span.set_parent(with_telem(headers));
-            span.in_scope(|| handlers::stream_image(form, pool, tree, api_key).in_current_span())
         })
 }
 

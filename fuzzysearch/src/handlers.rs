@@ -5,7 +5,7 @@ use tracing::{span, warn};
 use tracing_futures::Instrument;
 use warp::{Rejection, Reply};
 
-use crate::models::{image_query, image_query_sync};
+use crate::models::image_query;
 use crate::types::*;
 use crate::{early_return, rate_limit, Pool, Tree};
 use fuzzysearch_common::types::{SearchResult, SiteInfo};
@@ -112,7 +112,7 @@ async fn get_field_bytes(form: warp::multipart::FormData, field: &str) -> bytes:
 }
 
 #[tracing::instrument(skip(form))]
-async fn hash_input(form: warp::multipart::FormData) -> (i64, img_hash::ImageHash<[u8; 8]>) {
+async fn hash_input(form: warp::multipart::FormData) -> i64 {
     let bytes = get_field_bytes(form, "image").await;
 
     let len = bytes.len();
@@ -131,7 +131,7 @@ async fn hash_input(form: warp::multipart::FormData) -> (i64, img_hash::ImageHas
     let mut buf: [u8; 8] = [0; 8];
     buf.copy_from_slice(&hash.as_bytes());
 
-    (i64::from_be_bytes(buf), hash)
+    i64::from_be_bytes(buf)
 }
 
 #[tracing::instrument(skip(form))]
@@ -168,39 +168,21 @@ pub async fn search_image(
     let image_remaining = rate_limit!(&api_key, &db, image_limit, "image");
     let hash_remaining = rate_limit!(&api_key, &db, hash_limit, "hash");
 
-    let (num, hash) = hash_input(form).await;
+    let num = hash_input(form).await;
 
     let mut items = {
         if opts.search_type == Some(ImageSearchType::Force) {
-            image_query(
-                db.clone(),
-                tree.clone(),
-                vec![num],
-                10,
-                Some(hash.as_bytes().to_vec()),
-            )
-            .await
-            .unwrap()
-        } else {
-            let results = image_query(
-                db.clone(),
-                tree.clone(),
-                vec![num],
-                0,
-                Some(hash.as_bytes().to_vec()),
-            )
-            .await
-            .unwrap();
-            if results.is_empty() && opts.search_type != Some(ImageSearchType::Exact) {
-                image_query(
-                    db.clone(),
-                    tree.clone(),
-                    vec![num],
-                    10,
-                    Some(hash.as_bytes().to_vec()),
-                )
+            image_query(db.clone(), tree.clone(), vec![num], 10)
                 .await
                 .unwrap()
+        } else {
+            let results = image_query(db.clone(), tree.clone(), vec![num], 0)
+                .await
+                .unwrap();
+            if results.is_empty() && opts.search_type != Some(ImageSearchType::Exact) {
+                image_query(db.clone(), tree.clone(), vec![num], 10)
+                    .await
+                    .unwrap()
             } else {
                 results
             }
@@ -235,43 +217,6 @@ pub async fn search_image(
     Ok(Box::new(resp))
 }
 
-pub async fn stream_image(
-    form: warp::multipart::FormData,
-    pool: Pool,
-    tree: Tree,
-    api_key: String,
-) -> Result<Box<dyn Reply>, Rejection> {
-    rate_limit!(&api_key, &pool, image_limit, "image", 2);
-    rate_limit!(&api_key, &pool, hash_limit, "hash");
-
-    let (num, hash) = hash_input(form).await;
-
-    let mut query = image_query_sync(
-        pool.clone(),
-        tree,
-        vec![num],
-        10,
-        Some(hash.as_bytes().to_vec()),
-    );
-
-    let event_stream = async_stream::stream! {
-        while let Some(result) = query.recv().await {
-            yield sse_matches(result);
-        }
-    };
-
-    Ok(Box::new(warp::sse::reply(event_stream)))
-}
-
-#[allow(clippy::unnecessary_wraps)]
-fn sse_matches(
-    matches: Result<Vec<SearchResult>, sqlx::Error>,
-) -> Result<warp::sse::Event, core::convert::Infallible> {
-    let items = matches.unwrap();
-
-    Ok(warp::sse::Event::default().json_data(items).unwrap())
-}
-
 pub async fn search_hashes(
     opts: HashSearchOpts,
     db: Pool,
@@ -293,18 +238,8 @@ pub async fn search_hashes(
 
     let image_remaining = rate_limit!(&api_key, &db, image_limit, "image", hashes.len() as i16);
 
-    let mut results = image_query_sync(
-        pool,
-        tree,
-        hashes.clone(),
-        opts.distance.unwrap_or(10),
-        None,
-    );
-    let mut matches = Vec::new();
-
-    while let Some(r) = results.recv().await {
-        matches.extend(early_return!(r));
-    }
+    let results =
+        early_return!(image_query(pool, tree, hashes.clone(), opts.distance.unwrap_or(10),).await);
 
     let resp = warp::http::Response::builder()
         .header("x-rate-limit-total-image", image_remaining.1.to_string())
@@ -313,7 +248,7 @@ pub async fn search_hashes(
             image_remaining.0.to_string(),
         )
         .header("content-type", "application/json")
-        .body(serde_json::to_string(&matches).unwrap())
+        .body(serde_json::to_string(&results).unwrap())
         .unwrap();
 
     Ok(Box::new(resp))
@@ -427,10 +362,10 @@ pub async fn search_file(
                 .map(|artist| vec![artist]),
             distance: None,
             hash: None,
+            searched_hash: None,
             site_info: Some(SiteInfo::FurAffinity {
                 file_id: row.get("file_id"),
             }),
-            searched_hash: None,
             rating: row
                 .get::<Option<String>, _>("rating")
                 .and_then(|rating| rating.parse().ok()),
@@ -452,8 +387,8 @@ pub async fn search_file(
 
 pub async fn search_video(
     form: warp::multipart::FormData,
-    db: Pool,
-    api_key: String,
+    _db: Pool,
+    _api_key: String,
 ) -> Result<impl Reply, Rejection> {
     let hashes = hash_video(form).await;
 
@@ -535,7 +470,7 @@ pub async fn search_image_by_url(
     let hash: [u8; 8] = hash.as_bytes().try_into().unwrap();
     let num = i64::from_be_bytes(hash);
 
-    let results = image_query(db.clone(), tree.clone(), vec![num], 3, Some(hash.to_vec()))
+    let results = image_query(db.clone(), tree.clone(), vec![num], 3)
         .await
         .unwrap();
 

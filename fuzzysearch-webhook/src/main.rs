@@ -49,10 +49,9 @@ fn main() {
 
         let data = job
             .args()
-            .into_iter()
+            .iter()
             .next()
             .ok_or(WebhookError::MissingData)?
-            .to_owned()
             .to_owned();
 
         let value: fuzzysearch_common::types::WebHookData = serde_json::value::from_value(data)?;

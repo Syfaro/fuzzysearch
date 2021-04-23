@@ -1,18 +1,14 @@
-use std::collections::HashSet;
-
 use lazy_static::lazy_static;
 use prometheus::{register_histogram, Histogram};
-use tracing_futures::Instrument;
 
 use crate::types::*;
 use crate::{Pool, Tree};
-use futures::TryStreamExt;
 use fuzzysearch_common::types::{SearchResult, SiteInfo};
 
 lazy_static! {
-    static ref IMAGE_LOOKUP_DURATION: Histogram = register_histogram!(
-        "fuzzysearch_api_image_lookup_seconds",
-        "Duration to perform an image lookup"
+    static ref IMAGE_TREE_DURATION: Histogram = register_histogram!(
+        "fuzzysearch_api_image_tree_seconds",
+        "Duration to search for hashes in tree"
     )
     .unwrap();
     static ref IMAGE_QUERY_DURATION: Histogram = register_histogram!(
@@ -48,153 +44,146 @@ pub async fn lookup_api_key(key: &str, db: &sqlx::PgPool) -> Option<ApiKey> {
     .flatten()
 }
 
+#[derive(serde::Serialize)]
+struct HashSearch {
+    searched_hash: i64,
+    found_hash: i64,
+    distance: u64,
+}
+
 #[tracing::instrument(skip(pool, tree))]
 pub async fn image_query(
     pool: Pool,
     tree: Tree,
     hashes: Vec<i64>,
     distance: i64,
-    hash: Option<Vec<u8>>,
 ) -> Result<Vec<SearchResult>, sqlx::Error> {
-    let mut results = image_query_sync(pool, tree, hashes, distance, hash);
-    let mut matches = Vec::new();
+    let timer = IMAGE_TREE_DURATION.start_timer();
+    let lock = tree.read().await;
+    let found_hashes: Vec<HashSearch> = hashes
+        .iter()
+        .flat_map(|hash| {
+            lock.find(&crate::Node::new(*hash), distance as u64)
+                .map(|(dist, node)| HashSearch {
+                    searched_hash: *hash,
+                    found_hash: node.num(),
+                    distance: dist,
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    timer.stop_and_record();
 
-    while let Some(r) = results.recv().await {
-        matches.extend(r?);
-    }
+    let timer = IMAGE_QUERY_DURATION.start_timer();
+    let matches = sqlx::query!(
+        "WITH hashes AS (
+            SELECT * FROM jsonb_to_recordset($1::jsonb)
+                AS hashes(searched_hash bigint, found_hash bigint, distance bigint)
+        )
+        SELECT
+            'FurAffinity' site,
+            submission.id,
+            submission.hash_int hash,
+            submission.url,
+            submission.filename,
+            ARRAY(SELECT artist.name) artists,
+            submission.file_id,
+            null sources,
+            submission.rating,
+            hashes.searched_hash,
+            hashes.distance
+        FROM hashes
+        JOIN submission ON hashes.found_hash = submission.hash_int
+        JOIN artist ON submission.artist_id = artist.id
+        WHERE hash_int IN (SELECT hashes.found_hash)
+        UNION ALL
+        SELECT
+            'e621' site,
+            e621.id,
+            e621.hash,
+            e621.data->'file'->>'url' url,
+            (e621.data->'file'->>'md5') || '.' || (e621.data->'file'->>'ext') filename,
+            ARRAY(SELECT jsonb_array_elements_text(e621.data->'tags'->'artist')) artists,
+            null file_id,
+            ARRAY(SELECT jsonb_array_elements_text(e621.data->'sources')) sources,
+            e621.data->>'rating' rating,
+            hashes.searched_hash,
+            hashes.distance
+        FROM hashes
+        JOIN e621 ON hashes.found_hash = e621.hash
+        WHERE e621.hash IN (SELECT hashes.found_hash)
+        UNION ALL
+        SELECT
+            'Weasyl' site,
+            weasyl.id,
+            weasyl.hash,
+            weasyl.data->>'link' url,
+            null filename,
+            ARRAY(SELECT weasyl.data->>'owner_login') artists,
+            null file_id,
+            null sources,
+            weasyl.data->>'rating' rating,
+            hashes.searched_hash,
+            hashes.distance
+        FROM hashes
+        JOIN weasyl ON hashes.found_hash = weasyl.hash
+        WHERE weasyl.hash IN (SELECT hashes.found_hash)
+        UNION ALL
+        SELECT
+            'Twitter' site,
+            tweet.id,
+            tweet_media.hash,
+            tweet_media.url,
+            null filename,
+            ARRAY(SELECT tweet.data->'user'->>'screen_name') artists,
+            null file_id,
+            null sources,
+            CASE
+                WHEN (tweet.data->'possibly_sensitive')::boolean IS true THEN 'adult'
+                WHEN (tweet.data->'possibly_sensitive')::boolean IS false THEN 'general'
+            END rating,
+            hashes.searched_hash,
+            hashes.distance
+        FROM hashes
+        JOIN tweet_media ON hashes.found_hash = tweet_media.hash
+        JOIN tweet ON tweet_media.tweet_id = tweet.id
+        WHERE tweet_media.hash IN (SELECT hashes.found_hash)",
+        serde_json::to_value(&found_hashes).unwrap()
+    )
+    .map(|row| {
+        use std::convert::TryFrom;
+
+        let site_info = match row.site.as_deref() {
+            Some("FurAffinity") => SiteInfo::FurAffinity {
+                file_id: row.file_id.unwrap_or(-1),
+            },
+            Some("e621") => SiteInfo::E621 {
+                sources: row.sources,
+            },
+            Some("Twitter") => SiteInfo::Twitter,
+            Some("Weasyl") => SiteInfo::Weasyl,
+            _ => panic!("Got unknown site"),
+        };
+
+        SearchResult {
+            site_id: row.id.unwrap_or_default(),
+            site_info: Some(site_info),
+            rating: row.rating.and_then(|rating| rating.parse().ok()),
+            site_id_str: row.id.unwrap_or_default().to_string(),
+            url: row.url.unwrap_or_default(),
+            hash: row.hash,
+            distance: row
+                .distance
+                .map(|distance| u64::try_from(distance).ok())
+                .flatten(),
+            artists: row.artists,
+            filename: row.filename.unwrap_or_default(),
+            searched_hash: row.searched_hash,
+        }
+    })
+    .fetch_all(&pool)
+    .await?;
+    timer.stop_and_record();
 
     Ok(matches)
-}
-
-#[tracing::instrument(skip(pool, tree))]
-pub fn image_query_sync(
-    pool: Pool,
-    tree: Tree,
-    hashes: Vec<i64>,
-    distance: i64,
-    hash: Option<Vec<u8>>,
-) -> tokio::sync::mpsc::Receiver<Result<Vec<SearchResult>, sqlx::Error>> {
-    let (tx, rx) = tokio::sync::mpsc::channel(50);
-
-    tokio::spawn(
-        async move {
-            let db = pool;
-
-            for query_hash in hashes {
-                tracing::trace!(query_hash, "Evaluating hash");
-
-                let mut seen: HashSet<[u8; 8]> = HashSet::new();
-
-                let _timer = IMAGE_LOOKUP_DURATION.start_timer();
-
-                let node = crate::Node::query(query_hash.to_be_bytes());
-                let lock = tree.read().await;
-                let items = lock.find(&node, distance as u64);
-
-                for (dist, item) in items {
-                    if seen.contains(&item.0) {
-                        tracing::trace!("Already searched for hash");
-                        continue;
-                    }
-                    seen.insert(item.0);
-
-                    let _timer = IMAGE_QUERY_DURATION.start_timer();
-
-                    tracing::debug!(num = item.num(), "Searching database for hash in tree");
-
-                    let mut row = sqlx::query!(
-                        "SELECT
-                            'FurAffinity' site,
-                            submission.id,
-                            submission.hash_int hash,
-                            submission.url,
-                            submission.filename,
-                            ARRAY(SELECT artist.name) artists,
-                            submission.file_id,
-                            null sources,
-                            submission.rating
-                        FROM submission
-                        JOIN artist ON submission.artist_id = artist.id
-                        WHERE hash_int <@ ($1, 0)
-                        UNION ALL
-                        SELECT
-                            'e621' site,
-                            e621.id,
-                            e621.hash,
-                            e621.data->'file'->>'url' url,
-                            (e621.data->'file'->>'md5') || '.' || (e621.data->'file'->>'ext') filename,
-                            ARRAY(SELECT jsonb_array_elements_text(e621.data->'tags'->'artist')) artists,
-                            null file_id,
-                            ARRAY(SELECT jsonb_array_elements_text(e621.data->'sources')) sources,
-                            e621.data->>'rating' rating
-                        FROM e621
-                        WHERE hash <@ ($1, 0)
-                        UNION ALL
-                        SELECT
-                            'Weasyl' site,
-                            weasyl.id,
-                            weasyl.hash,
-                            weasyl.data->>'link' url,
-                            null filename,
-                            ARRAY(SELECT weasyl.data->>'owner_login') artists,
-                            null file_id,
-                            null sources,
-                            weasyl.data->>'rating' rating
-                        FROM weasyl
-                        WHERE hash <@ ($1, 0)
-                        UNION ALL
-                        SELECT
-                            'Twitter' site,
-                            tweet.id,
-                            tweet_media.hash,
-                            tweet_media.url,
-                            null filename,
-                            ARRAY(SELECT tweet.data->'user'->>'screen_name') artists,
-                            null file_id,
-                            null sources,
-                            CASE
-                                WHEN (tweet.data->'possibly_sensitive')::boolean IS true THEN 'adult'
-                                WHEN (tweet.data->'possibly_sensitive')::boolean IS false THEN 'general'
-                            END rating
-                        FROM tweet_media
-                        JOIN tweet ON tweet_media.tweet_id = tweet.id
-                        WHERE hash <@ ($1, 0)",
-                        &item.num()
-                    )
-                    .map(|row| {
-                        let site_info = match row.site.as_deref() {
-                            Some("FurAffinity") => SiteInfo::FurAffinity { file_id: row.file_id.unwrap_or(-1) },
-                            Some("e621") => SiteInfo::E621 { sources: row.sources },
-                            Some("Twitter") => SiteInfo::Twitter,
-                            Some("Weasyl") => SiteInfo::Weasyl,
-                            _ => panic!("Got unknown site"),
-                        };
-
-                        let file = SearchResult {
-                            site_id: row.id.unwrap_or_default(),
-                            site_info: Some(site_info),
-                            rating: row.rating.and_then(|rating| rating.parse().ok()),
-                            site_id_str: row.id.unwrap_or_default().to_string(),
-                            url: row.url.unwrap_or_default(),
-                            hash: row.hash,
-                            distance: Some(dist),
-                            artists: row.artists,
-                            filename: row.filename.unwrap_or_default(),
-                            searched_hash: Some(query_hash),
-                        };
-
-                        vec![file]
-                    })
-                    .fetch(&db);
-
-                    while let Some(row) = row.try_next().await.ok().flatten() {
-                        tx.send(Ok(row)).await.unwrap();
-                    }
-                }
-            }
-        }
-        .in_current_span(),
-    );
-
-    rx
 }
