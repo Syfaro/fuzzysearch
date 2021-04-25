@@ -38,6 +38,18 @@
       ]
     }
   },
+  "8fb99c8859fdcc51f095ba191924f3a336358ce6a6e5223e86f8b15cd7ec7f37": {
+    "query": "INSERT INTO submission (id, updated_at, deleted) VALUES ($1, current_timestamp, true) ON CONFLICT (id) DO UPDATE SET deleted = true",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Left": [
+          "Int4"
+        ]
+      },
+      "nullable": []
+    }
+  },
   "921fcab0b8fed99671fe84fe1b011650b7fa4cfaae3843a5a724f928db4c9734": {
     "query": "SELECT id FROM tag WHERE name = $1",
     "describe": {
@@ -118,18 +130,6 @@
       "nullable": [
         true
       ]
-    }
-  },
-  "be1f2f62e761cf71b2c075f38c19a96cb793e6f25e2dc86c322ab379382f2b5c": {
-    "query": "INSERT INTO submission (id) VALUES ($1) ON CONFLICT (id) DO UPDATE SET deleted = true",
-    "describe": {
-      "columns": [],
-      "parameters": {
-        "Left": [
-          "Int4"
-        ]
-      },
-      "nullable": []
     }
   },
   "cb877c1de895efa7753b25f401036ae61711d95a1c1db233580b50fb36eec0cb": {

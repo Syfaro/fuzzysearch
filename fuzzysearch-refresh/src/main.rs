@@ -272,7 +272,7 @@ async fn update_furaffinity_submission(
         Some(sub) => sub,
         None => {
             tracing::info!(id, "furaffinity submission did not exist");
-            sqlx::query!("INSERT INTO submission (id) VALUES ($1) ON CONFLICT (id) DO UPDATE SET deleted = true", id).execute(&db).await?;
+            sqlx::query!("INSERT INTO submission (id, updated_at, deleted) VALUES ($1, current_timestamp, true) ON CONFLICT (id) DO UPDATE SET deleted = true", id).execute(&db).await?;
             return Ok(());
         }
     };
