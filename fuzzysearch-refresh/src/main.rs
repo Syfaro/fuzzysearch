@@ -12,18 +12,20 @@ enum Error {
     #[error("missing data: {0}")]
     MissingData(&'static str),
     #[error("furaffinity error")]
-    FurAffinityError(furaffinity_rs::Error),
+    FurAffinity(furaffinity_rs::Error),
     #[error("faktory error")]
     Faktory,
 }
 
-static FURAFFINITY_QUEUE: &str = "refresh_furaffinity";
+static FURAFFINITY_QUEUE: &str = "fuzzysearch_refresh_furaffinity";
 
 type Producer = Arc<Mutex<faktory::Producer<TcpStream>>>;
 type Db = sqlx::Pool<sqlx::Postgres>;
 
 fn main() {
     fuzzysearch_common::init_logger();
+
+    tracing::info!("initializing");
 
     let rt = Arc::new(tokio::runtime::Runtime::new().unwrap());
 
@@ -62,7 +64,7 @@ fn main() {
 
         let id = job
             .args()
-            .into_iter()
+            .iter()
             .next()
             .ok_or(Error::MissingData("submission id"))?
             .as_i64()
@@ -87,7 +89,7 @@ fn main() {
 
         let sub = rt_clone
             .block_on(fa.get_submission(id))
-            .map_err(|err| Error::FurAffinityError(err))?;
+            .map_err(Error::FurAffinity)?;
 
         tracing::debug!("loaded furaffinity submission");
 
@@ -103,15 +105,28 @@ fn main() {
 
     faktory.register(
         "furaffinity_calculate_missing",
-        move |_job| -> Result<(), Error> {
+        move |job| -> Result<(), Error> {
             use std::collections::HashSet;
+
+            let batch_size = job
+                .args()
+                .iter()
+                .next()
+                .map(|arg| arg.as_i64())
+                .flatten()
+                .unwrap_or(1_000);
+
+            tracing::debug!(batch_size, "calculating missing submissions");
 
             let known_ids: HashSet<_> = rt
                 .block_on(sqlx::query_scalar!("SELECT id FROM submission").fetch_all(&pool))?
                 .into_iter()
                 .collect();
             let all_ids: HashSet<_> = (1..=*known_ids.iter().max().unwrap_or(&1)).collect();
-            let missing_ids: Vec<_> = all_ids.difference(&known_ids).take(1_000).collect();
+            let missing_ids: Vec<_> = all_ids
+                .difference(&known_ids)
+                .take(batch_size as usize)
+                .collect();
 
             tracing::info!(
                 missing = missing_ids.len(),
@@ -131,7 +146,8 @@ fn main() {
     );
 
     let faktory = faktory.connect(None).unwrap_or_log();
-    faktory.run_to_completion(&[FURAFFINITY_QUEUE]);
+    tracing::info!("starting to run queues");
+    faktory.run_to_completion(&["fuzzysearch_refresh", FURAFFINITY_QUEUE]);
 }
 
 /// Check the number of users on FurAffinity every minute and control if queues
@@ -261,10 +277,7 @@ async fn update_furaffinity_submission(
         }
     };
 
-    let sub = fa
-        .calc_image_hash(sub)
-        .await
-        .map_err(|err| Error::FurAffinityError(err))?;
+    let sub = fa.calc_image_hash(sub).await.map_err(Error::FurAffinity)?;
 
     let artist_id = get_furaffinity_artist(&db, &sub.artist).await?;
 
