@@ -80,12 +80,13 @@ steps:
   pull: always
   image: plugins/docker
   settings:
-    auto_tag: true
     dockerfile: fuzzysearch-refresh/Dockerfile
     password:
       from_secret: docker_password
     registry: registry.huefox.com
     repo: registry.huefox.com/fuzzysearch/refresh
+    tags:
+    - ${DRONE_COMMIT_BRANCH}
     username:
       from_secret: docker_username
   when:
@@ -162,6 +163,6 @@ steps:
 
 ---
 kind: signature
-hmac: 6703cabde5915f3e819de0e5984cdaa966e3e2a4cb0d440a0c7b1fb9a1f7c169
+hmac: 8aaa7986a3b066785f23d60568a51801ea6d374a690f3e0c48003b364c4bc031
 
 ...
