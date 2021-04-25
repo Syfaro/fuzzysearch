@@ -308,13 +308,12 @@ async fn main() {
 
     loop {
         tracing::debug!("Fetching latest ID... ");
-        let latest_id = fa
+        let (latest_id, online) = fa
             .latest_id()
             .await
             .expect_or_log("Unable to get latest id");
-        tracing::info!(latest_id = latest_id.0, "Got latest ID");
+        tracing::info!(latest_id = latest_id, "Got latest ID");
 
-        let online = latest_id.1;
         tracing::debug!(?online, "Got updated users online");
         USERS_ONLINE
             .with_label_values(&["guest"])
@@ -326,7 +325,7 @@ async fn main() {
             .with_label_values(&["other"])
             .set(online.other as i64);
 
-        for id in ids_to_check(&client, latest_id.0).await {
+        for id in ids_to_check(&client, latest_id).await {
             process_submission(&client, &fa, &faktory, id).await;
         }
 

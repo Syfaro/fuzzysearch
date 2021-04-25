@@ -1,0 +1,168 @@
+{
+  "db": "PostgreSQL",
+  "36c9a44cf5d7e004912ae72b7f1e3550deb0531aa07144c3cef140381da9bc97": {
+    "query": "SELECT id FROM artist WHERE name = $1",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int4"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Text"
+        ]
+      },
+      "nullable": [
+        false
+      ]
+    }
+  },
+  "58683afdbc3906ed624e0daf3acec7079db9bc455b30d647d932a35838419b1b": {
+    "query": "SELECT id FROM submission",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int4"
+        }
+      ],
+      "parameters": {
+        "Left": []
+      },
+      "nullable": [
+        false
+      ]
+    }
+  },
+  "921fcab0b8fed99671fe84fe1b011650b7fa4cfaae3843a5a724f928db4c9734": {
+    "query": "SELECT id FROM tag WHERE name = $1",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int4"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Text"
+        ]
+      },
+      "nullable": [
+        false
+      ]
+    }
+  },
+  "a1dff4a02afe1a8a3ffd42cf86b557709fdb0994518b72342f15f9535f5b6a02": {
+    "query": "INSERT INTO submission\n            (id, artist_id, url, filename, hash, rating, posted_at, description, hash_int, file_id, file_size, file_sha256, updated_at) VALUES\n            ($1, $2, $3, $4, decode($5, 'base64'), $6, $7, $8, $9, CASE WHEN isnumeric(split_part($4, '.', 1)) THEN split_part($4, '.', 1)::int ELSE null END, $10, $11, current_timestamp)\n            ON CONFLICT (id) DO UPDATE SET url = $3, filename = $4, hash = decode($5, 'base64'), rating = $6, description = $8, hash_int = $9, file_id = CASE WHEN isnumeric(split_part($4, '.', 1)) THEN split_part($4, '.', 1)::int ELSE null END, file_size = $10, file_sha256 = $11, updated_at = current_timestamp",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Left": [
+          "Int4",
+          "Int4",
+          "Text",
+          "Text",
+          "Text",
+          "Bpchar",
+          "Timestamptz",
+          "Text",
+          "Int8",
+          "Int4",
+          "Bytea"
+        ]
+      },
+      "nullable": []
+    }
+  },
+  "a6d0113ac38781a41a717aee7e28940b7f362951402bec50bc54932a6939b217": {
+    "query": "INSERT INTO artist (name) VALUES ($1) RETURNING id",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int4"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Text"
+        ]
+      },
+      "nullable": [
+        false
+      ]
+    }
+  },
+  "b9323d762b487be18d991f84cfde591c7b33e0a2530be186ab77ad802781772e": {
+    "query": "SELECT updated_at FROM submission WHERE id = $1",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "updated_at",
+          "type_info": "Timestamptz"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Int4"
+        ]
+      },
+      "nullable": [
+        true
+      ]
+    }
+  },
+  "be1f2f62e761cf71b2c075f38c19a96cb793e6f25e2dc86c322ab379382f2b5c": {
+    "query": "INSERT INTO submission (id) VALUES ($1) ON CONFLICT (id) DO UPDATE SET deleted = true",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Left": [
+          "Int4"
+        ]
+      },
+      "nullable": []
+    }
+  },
+  "cb877c1de895efa7753b25f401036ae61711d95a1c1db233580b50fb36eec0cb": {
+    "query": "INSERT INTO tag_to_post (tag_id, post_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Left": [
+          "Int4",
+          "Int4"
+        ]
+      },
+      "nullable": []
+    }
+  },
+  "f9dfb3a7414c35f112dc30d053fdc546ec4776761346db98982858ddf3afb6d3": {
+    "query": "INSERT INTO tag (name) VALUES ($1) RETURNING id",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int4"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Text"
+        ]
+      },
+      "nullable": [
+        false
+      ]
+    }
+  }
+}

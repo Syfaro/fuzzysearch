@@ -1,0 +1,25 @@
+[package]
+name = "fuzzysearch-refresh"
+version = "0.1.0"
+authors = ["Syfaro <syfaro@huefox.com>"]
+edition = "2018"
+
+[dependencies]
+tracing = "0.1"
+tracing-unwrap = "0.9"
+anyhow = "1"
+thiserror = "1"
+
+tokio = "1"
+tokio-stream = "0.1"
+futures = "0.3"
+
+faktory = { git = "https://github.com/Syfaro/faktory-rs", rev = "d1a145562a405427c80bea5760b2b169d8d02d94" }
+sqlx = { version = "0.5", features = ["runtime-tokio-native-tls", "postgres", "macros", "json", "offline", "chrono"] }
+
+chrono = "0.4"
+reqwest = "0.11"
+
+furaffinity-rs = { git = "https://github.com/Syfaro/furaffinity-rs" }
+
+fuzzysearch-common = { path = "../fuzzysearch-common" }
