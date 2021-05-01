@@ -29,7 +29,7 @@ steps:
       from_secret: sccache_s3_access_key
     AWS_SECRET_ACCESS_KEY:
       from_secret: sccache_s3_secret_key
-    SCCACHE_BUCKET: cache
+    SCCACHE_BUCKET: sccache
     SCCACHE_ENDPOINT:
       from_secret: sccache_s3_endpoint
     SCCACHE_S3_USE_SSL: true
@@ -48,7 +48,7 @@ steps:
       from_secret: docker_username
   when:
     branch:
-    - master
+    - main
     event:
     - push
     paths:
@@ -69,7 +69,7 @@ steps:
       from_secret: docker_username
   when:
     branch:
-    - master
+    - main
     event:
     - push
     paths:
@@ -90,7 +90,7 @@ steps:
       from_secret: docker_username
   when:
     branch:
-    - master
+    - main
     event:
     - push
     paths:
@@ -111,7 +111,7 @@ steps:
       from_secret: docker_username
   when:
     branch:
-    - master
+    - main
     event:
     - push
     paths:
@@ -132,7 +132,7 @@ steps:
       from_secret: docker_username
   when:
     branch:
-    - master
+    - main
     event:
     - push
     paths:
@@ -141,6 +141,6 @@ steps:
 
 ---
 kind: signature
-hmac: a43b3686de2a1ac6b959596ed9254f0a07453c32f6aadf8098771e6e1e4d9cdc
+hmac: af0338b214c113b628f362a1bff2b282dece671adc6247e88d11ec7e0c7edc2a
 
 ...
