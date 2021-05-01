@@ -12,10 +12,11 @@ impl std::str::FromStr for Rating {
     type Err = &'static str;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        // Each site has their own system of content ratings...
         let rating = match s {
             "g" | "s" | "general" => Self::General,
             "m" | "q" | "mature" => Self::Mature,
-            "a" | "e" | "adult" => Self::Adult,
+            "a" | "e" | "adult" | "explicit" => Self::Adult,
             _ => return Err("unknown rating"),
         };
 
