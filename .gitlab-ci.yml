@@ -1,0 +1,174 @@
+stages:
+    - test
+    - build
+    - image
+
+variables:
+    CARGO_HOME: /root/.cargo
+    SCCACHE_VERSION: v0.2.15
+    SCCACHE_S3_USE_SSL: "true"
+    SCCACHE_BUCKET: "sccache"
+
+    SQLX_OFFLINE: "true"
+
+# Cache should only be updated once, default to pull only
+cache: &global_cache
+    paths:
+        - .cargo/
+    policy: pull
+
+# Run tests on current stable Rust version
+test:latest: &base_test
+    image: rust:1.51-slim-buster
+    stage: test
+    cache:
+        <<: *global_cache
+        policy: pull-push
+    before_script:
+        # Use proxy for apt, install wget to download sccache and other deps
+        - export http_proxy=$DEBIAN_PROXY
+        - apt-get update -y
+        - apt-get install -y wget libssl-dev pkg-config libavcodec-dev libavformat-dev libavutil-dev libavdevice-dev clang llvm python3 python3-pip
+        - unset http_proxy
+
+        # Download and extract sccache, ensuring it's executable
+        - wget -q -O /tmp/sccache.tar.gz https://github.com/mozilla/sccache/releases/download/$SCCACHE_VERSION/sccache-$SCCACHE_VERSION-x86_64-unknown-linux-musl.tar.gz
+        - tar zxvf /tmp/sccache.tar.gz --strip-components=1 -C /tmp
+        - export RUSTC_WRAPPER=/tmp/sccache
+        - chmod a+x $RUSTC_WRAPPER
+
+        # Move sccache config into place
+        - mkdir -p $HOME/.config/sccache
+        - mv $SCCACHE_CONFIG $HOME/.config/sccache/config
+
+        # Prepare cargo data from cache
+        - rm -rf /root/.cargo || true
+        - mv .cargo /root/.cargo || true
+
+        # Prepare cargo-cache for cleaning data later
+        - cargo install cargo-cache --no-default-features --features ci-autoclean
+    script:
+        # Build, test, and show stats
+        - cargo build --verbose
+        - cargo test --verbose
+        - $RUSTC_WRAPPER --show-stats
+
+        # Clean cargo data, move back into place for caching
+        - $CARGO_HOME/bin/cargo-cache
+        - rm -rf .cargo || true
+        - mv /root/.cargo .cargo || true
+
+# Same as above, but nightly Rust
+test:nightly:
+    <<: *base_test
+    image: rustlang/rust:nightly-slim
+    allow_failure: true
+
+build:api: &base_build
+    <<: *base_test
+    stage: build
+    cache:
+        <<: *global_cache
+        policy: pull
+    needs: ['test:latest']
+    artifacts:
+        expire_in: 1 day
+        paths:
+            - ./fuzzysearch/fuzzysearch
+    script:
+        - cargo build --verbose --release --bin fuzzysearch
+        - $RUSTC_WRAPPER --show-stats
+        - mv ./target/release/fuzzysearch ./fuzzysearch/fuzzysearch
+
+build:webhook:
+    <<: *base_build
+    artifacts:
+        expire_in: 1 day
+        paths:
+            - ./fuzzysearch-webhook/fuzzysearch-webhook
+    script:
+        - cargo build --verbose --release --bin fuzzysearch-webhook
+        - $RUSTC_WRAPPER --show-stats
+        - mv ./target/release/fuzzysearch-webhook ./fuzzysearch-webhook/fuzzysearch-webhook
+
+build:ingest-e621:
+    <<: *base_build
+    artifacts:
+        expire_in: 1 day
+        paths:
+            - ./fuzzysearch-ingest-e621/fuzzysearch-ingest-e621
+    script:
+        - cargo build --verbose --release --bin fuzzysearch-ingest-e621
+        - $RUSTC_WRAPPER --show-stats
+        - mv ./target/release/fuzzysearch-ingest-e621 ./fuzzysearch-ingest-e621/fuzzysearch-ingest-e621
+
+build:ingest-furaffinity:
+    <<: *base_build
+    artifacts:
+        expire_in: 1 day
+        paths:
+            - ./fuzzysearch-ingest-furaffinity/fuzzysearch-ingest-furaffinity
+    script:
+        - cargo build --verbose --release --bin fuzzysearch-ingest-furaffinity
+        - $RUSTC_WRAPPER --show-stats
+        - mv ./target/release/fuzzysearch-ingest-furaffinity ./fuzzysearch-ingest-furaffinity/fuzzysearch-ingest-furaffinity
+
+build:ingest-weasyl:
+    <<: *base_build
+    artifacts:
+        expire_in: 1 day
+        paths:
+            - ./fuzzysearch-ingest-weasyl/fuzzysearch-ingest-weasyl
+    script:
+        - cargo build --verbose --release --bin fuzzysearch-ingest-weasyl
+        - $RUSTC_WRAPPER --show-stats
+        - mv ./target/release/fuzzysearch-ingest-weasyl ./fuzzysearch-ingest-weasyl/fuzzysearch-ingest-weasyl
+
+images:api: &base_images
+    stage: image
+    image: docker
+    cache: {}
+    before_script:
+        - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    needs: ['build:api']
+    script:
+        - docker pull $CI_REGISTRY_IMAGE/api:latest || true
+        - docker build --build-arg http_proxy=$DEBIAN_PROXY --cache-from $CI_REGISTRY_IMAGE/api:latest --tag $CI_REGISTRY_IMAGE/api:$CI_COMMIT_SHA --tag $CI_REGISTRY_IMAGE/api:latest -f fuzzysearch/Dockerfile .
+        - docker push $CI_REGISTRY_IMAGE/api:$CI_COMMIT_SHA
+        - docker push $CI_REGISTRY_IMAGE/api:latest
+
+images:webhook:
+    <<: *base_images
+    needs: ['build:webhook']
+    script:
+        - docker pull $CI_REGISTRY_IMAGE/webhook:latest || true
+        - docker build --build-arg http_proxy=$DEBIAN_PROXY --cache-from $CI_REGISTRY_IMAGE/webhook:latest --tag $CI_REGISTRY_IMAGE/webhook:$CI_COMMIT_SHA --tag $CI_REGISTRY_IMAGE/webhook:latest -f fuzzysearch-webhook/Dockerfile .
+        - docker push $CI_REGISTRY_IMAGE/webhook:$CI_COMMIT_SHA
+        - docker push $CI_REGISTRY_IMAGE/webhook:latest
+
+images:ingest-e621:
+    <<: *base_images
+    needs: ['build:ingest-e621']
+    script:
+        - docker pull $CI_REGISTRY_IMAGE/ingest-e621:latest || true
+        - docker build --build-arg http_proxy=$DEBIAN_PROXY --cache-from $CI_REGISTRY_IMAGE/ingest-e621:latest --tag $CI_REGISTRY_IMAGE/ingest-e621:$CI_COMMIT_SHA --tag $CI_REGISTRY_IMAGE/ingest-e621:latest -f fuzzysearch-ingest-e621/Dockerfile .
+        - docker push $CI_REGISTRY_IMAGE/ingest-e621:$CI_COMMIT_SHA
+        - docker push $CI_REGISTRY_IMAGE/ingest-e621:latest
+
+images:ingest-furaffinity:
+    <<: *base_images
+    needs: ['build:ingest-furaffinity']
+    script:
+        - docker pull $CI_REGISTRY_IMAGE/ingest-furaffinity:latest || true
+        - docker build --build-arg http_proxy=$DEBIAN_PROXY --cache-from $CI_REGISTRY_IMAGE/ingest-furaffinity:latest --tag $CI_REGISTRY_IMAGE/ingest-furaffinity:$CI_COMMIT_SHA --tag $CI_REGISTRY_IMAGE/ingest-furaffinity:latest -f fuzzysearch-ingest-furaffinity/Dockerfile .
+        - docker push $CI_REGISTRY_IMAGE/ingest-furaffinity:$CI_COMMIT_SHA
+        - docker push $CI_REGISTRY_IMAGE/ingest-furaffinity:latest
+
+images:ingest-weasyl:
+    <<: *base_images
+    needs: ['build:ingest-weasyl']
+    script:
+        - docker pull $CI_REGISTRY_IMAGE/ingest-weasyl:latest || true
+        - docker build --build-arg http_proxy=$DEBIAN_PROXY --cache-from $CI_REGISTRY_IMAGE/ingest-weasyl:latest --tag $CI_REGISTRY_IMAGE/ingest-weasyl:$CI_COMMIT_SHA --tag $CI_REGISTRY_IMAGE/ingest-weasyl:latest -f fuzzysearch-ingest-weasyl/Dockerfile .
+        - docker push $CI_REGISTRY_IMAGE/ingest-weasyl:$CI_COMMIT_SHA
+        - docker push $CI_REGISTRY_IMAGE/ingest-weasyl:latest
