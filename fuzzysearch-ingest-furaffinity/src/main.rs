@@ -115,51 +115,6 @@ async fn insert_null_submission(client: &Client, id: i32) -> Result<u64, tokio_p
         .await
 }
 
-async fn request(
-    req: hyper::Request<hyper::Body>,
-) -> Result<hyper::Response<hyper::Body>, hyper::Error> {
-    match (req.method(), req.uri().path()) {
-        (&hyper::Method::GET, "/health") => Ok(hyper::Response::new(hyper::Body::from("OK"))),
-
-        (&hyper::Method::GET, "/metrics") => {
-            use prometheus::Encoder;
-
-            let encoder = prometheus::TextEncoder::new();
-
-            let metric_families = prometheus::gather();
-            let mut buffer = vec![];
-            encoder
-                .encode(&metric_families, &mut buffer)
-                .unwrap_or_log();
-
-            Ok(hyper::Response::new(hyper::Body::from(buffer)))
-        }
-
-        _ => {
-            let mut not_found = hyper::Response::default();
-            *not_found.status_mut() = hyper::StatusCode::NOT_FOUND;
-            Ok(not_found)
-        }
-    }
-}
-
-async fn web() {
-    use hyper::service::{make_service_fn, service_fn};
-
-    let addr: std::net::SocketAddr = std::env::var("HTTP_HOST")
-        .expect_or_log("Missing HTTP_HOST")
-        .parse()
-        .unwrap_or_log();
-
-    let service = make_service_fn(|_| async { Ok::<_, hyper::Error>(service_fn(request)) });
-
-    let server = hyper::Server::bind(&addr).serve(service);
-
-    tracing::info!("Listening on http://{}", addr);
-
-    server.await.unwrap_or_log();
-}
-
 struct RetryHandler {
     max_attempts: usize,
 }
@@ -270,7 +225,8 @@ async fn process_submission(
 
 #[tokio::main]
 async fn main() {
-    fuzzysearch_common::init_logger();
+    fuzzysearch_common::trace::configure_tracing();
+    fuzzysearch_common::trace::serve_metrics().await;
 
     let (cookie_a, cookie_b) = (
         std::env::var("FA_A").expect_or_log("Missing FA_A"),
@@ -296,8 +252,6 @@ async fn main() {
             panic!("PostgreSQL connection error: {:?}", e);
         }
     });
-
-    tokio::spawn(async move { web().await });
 
     let faktory_dsn = std::env::var("FAKTORY_URL").expect_or_log("Missing FAKTORY_URL");
     let faktory = FaktoryClient::connect(faktory_dsn)

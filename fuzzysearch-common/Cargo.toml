@@ -5,10 +5,11 @@ authors = ["Syfaro <syfaro@huefox.com>"]
 edition = "2018"
 
 [features]
-default = []
+default = ["trace"]
 
 video = ["ffmpeg-next", "tempfile"]
 queue = ["faktory", "tokio", "serde_json"]
+trace = ["opentelemetry", "opentelemetry-jaeger", "tracing-opentelemetry", "hyper", "prometheus"]
 
 [dependencies]
 anyhow = "1"
@@ -27,3 +28,9 @@ tempfile = { version = "3", optional = true }
 faktory = { version = "0.11", optional = true }
 tokio = { version = "1", features = ["rt"], optional = true }
 serde_json = { version = "1", optional = true }
+
+opentelemetry = { version = "0.13.0", features = ["rt-tokio"], optional = true }
+opentelemetry-jaeger = { version = "0.12", features = ["tokio"], optional = true }
+tracing-opentelemetry = { version = "0.12", optional = true }
+hyper = { version = "0.14", optional = true }
+prometheus = { version = "0.12", optional = true }
