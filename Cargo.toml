@@ -3,7 +3,7 @@ members = [
     "fuzzysearch-common",
 
     "fuzzysearch",
-    "fuzzysearch-image",
+    "fuzzysearch-hash-input",
     "fuzzysearch-webhook",
 
     "fuzzysearch-ingest-e621",
