@@ -65,8 +65,8 @@ async fn metrics(
 
 pub async fn serve_metrics() {
     use hyper::{
+        server::Server,
         service::{make_service_fn, service_fn},
-        Server,
     };
     use std::convert::Infallible;
     use std::net::SocketAddr;

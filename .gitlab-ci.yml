@@ -91,6 +91,17 @@ build:webhook:
         - $RUSTC_WRAPPER --show-stats
         - mv ./target/release/fuzzysearch-webhook ./fuzzysearch-webhook/fuzzysearch-webhook
 
+build:hash-input:
+    <<: *base_build
+    artifacts:
+        expire_in: 1 day
+        paths:
+            - ./fuzzysearch-hash-input/fuzzysearch-hash-input
+    script:
+        - cargo build --verbose --release --bin fuzzysearch-hash-input
+        - $RUSTC_WRAPPER --show-stats
+        - mv ./target/release/fuzzysearch-hash-input ./fuzzysearch-hash-input/fuzzysearch-hash-input
+
 build:ingest-e621:
     <<: *base_build
     artifacts:
@@ -145,6 +156,15 @@ images:webhook:
         - docker build --build-arg http_proxy=$DEBIAN_PROXY --cache-from $CI_REGISTRY_IMAGE/webhook:latest --tag $CI_REGISTRY_IMAGE/webhook:$CI_COMMIT_SHA --tag $CI_REGISTRY_IMAGE/webhook:latest -f fuzzysearch-webhook/Dockerfile .
         - docker push $CI_REGISTRY_IMAGE/webhook:$CI_COMMIT_SHA
         - docker push $CI_REGISTRY_IMAGE/webhook:latest
+
+images:hash-input:
+    <<: *base_images
+    needs: ['build:hash-input']
+    script:
+        - docker pull $CI_REGISTRY_IMAGE/hash-input:latest || true
+        - docker build --build-arg http_proxy=$DEBIAN_PROXY --cache-from $CI_REGISTRY_IMAGE/hash-input:latest --tag $CI_REGISTRY_IMAGE/hash-input:$CI_COMMIT_SHA --tag $CI_REGISTRY_IMAGE/hash-input:latest -f fuzzysearch-hash-input/Dockerfile .
+        - docker push $CI_REGISTRY_IMAGE/hash-input:$CI_COMMIT_SHA
+        - docker push $CI_REGISTRY_IMAGE/hash-input:latest
 
 images:ingest-e621:
     <<: *base_images

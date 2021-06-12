@@ -1383,7 +1383,7 @@ dependencies = [
  "hyper 0.14.9",
  "image",
  "img_hash",
- "infer 0.4.0",
+ "infer 0.5.0",
  "lazy_static",
  "opentelemetry",
  "opentelemetry-http",
@@ -1429,7 +1429,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "fuzzysearch-image"
+name = "fuzzysearch-hash-input"
 version = "0.1.0"
 dependencies = [
  "actix-http",
@@ -2042,9 +2042,9 @@ checksum = "64e9829a50b42bb782c1df523f78d332fe371b10c661e78b7a3c34b0198e9fac"
 
 [[package]]
 name = "infer"
-version = "0.4.0"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f92b41dab759f9e8427c03f519c344a14655490b8db548dac1e57a75b3258391"
+checksum = "ea70330449622910e0edebab230734569516269fb32342fb0a8956340fa48c6c"
 
 [[package]]
 name = "input_buffer"

@@ -10,7 +10,6 @@ use tokio::{
     sync::Semaphore,
 };
 use tokio_stream::StreamExt;
-use tracing::Instrument;
 
 lazy_static::lazy_static! {
     static ref IMAGE_LOADING_DURATION: prometheus::Histogram =
@@ -52,7 +51,6 @@ async fn process_image(
             let file = tempfile()?;
             Ok(tokio::fs::File::from_std(file))
         })
-        .in_current_span()
         .await??;
 
     tracing::debug!("writing contents to temp file");
@@ -87,7 +85,6 @@ async fn process_image(
 
         Ok(hash)
     })
-    .in_current_span()
     .await??;
 
     tracing::debug!("calculated image hash: {}", hash);
