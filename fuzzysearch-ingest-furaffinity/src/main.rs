@@ -225,7 +225,7 @@ async fn process_submission(
 
 #[tokio::main]
 async fn main() {
-    fuzzysearch_common::trace::configure_tracing();
+    fuzzysearch_common::trace::configure_tracing("fuzzysearch-ingest-furaffinity");
     fuzzysearch_common::trace::serve_metrics().await;
 
     let (cookie_a, cookie_b) = (

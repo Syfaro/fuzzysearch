@@ -40,7 +40,7 @@ impl bk_tree::Metric<Node> for Hamming {
 
 #[tokio::main]
 async fn main() {
-    fuzzysearch_common::trace::configure_tracing();
+    fuzzysearch_common::trace::configure_tracing("fuzzysearch");
     fuzzysearch_common::trace::serve_metrics().await;
 
     ffmpeg_next::init().expect("Unable to initialize ffmpeg");

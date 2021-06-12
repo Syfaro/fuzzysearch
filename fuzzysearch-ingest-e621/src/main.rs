@@ -30,7 +30,7 @@ type Auth = (String, Option<String>);
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    fuzzysearch_common::trace::configure_tracing();
+    fuzzysearch_common::trace::configure_tracing("fuzzysearch-ingest-e621");
     fuzzysearch_common::trace::serve_metrics().await;
 
     let login = std::env::var("E621_LOGIN").expect_or_log("Missing E621_LOGIN");

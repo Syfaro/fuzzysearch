@@ -198,7 +198,7 @@ async fn insert_null(
 
 #[tokio::main]
 async fn main() {
-    fuzzysearch_common::trace::configure_tracing();
+    fuzzysearch_common::trace::configure_tracing("fuzzysearch-ingest-weasyl");
     fuzzysearch_common::trace::serve_metrics().await;
 
     let api_key = std::env::var("WEASYL_APIKEY").unwrap_or_log();

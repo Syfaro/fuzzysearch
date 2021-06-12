@@ -1,4 +1,4 @@
-pub fn configure_tracing() {
+pub fn configure_tracing(service_name: &'static str) {
     use opentelemetry::KeyValue;
     use tracing_subscriber::layer::SubscriberExt;
 
@@ -15,7 +15,7 @@ pub fn configure_tracing() {
 
     let tracer = opentelemetry_jaeger::new_pipeline()
         .with_agent_endpoint(std::env::var("JAEGER_COLLECTOR").expect("Missing JAEGER_COLLECTOR"))
-        .with_service_name(env!("CARGO_CRATE_NAME"))
+        .with_service_name(service_name)
         .with_tags(vec![
             KeyValue::new("environment", env.to_owned()),
             KeyValue::new("version", env!("CARGO_PKG_VERSION")),
@@ -44,6 +44,8 @@ pub fn configure_tracing() {
             .with(subscriber);
         tracing::subscriber::set_global_default(subscriber).unwrap();
     }
+
+    tracing::debug!(service_name, "set application tracing service name");
 }
 
 async fn metrics(

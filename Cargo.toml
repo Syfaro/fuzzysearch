@@ -1,14 +1,17 @@
 [workspace]
 members = [
-    "fuzzysearch",
     "fuzzysearch-common",
+
+    "fuzzysearch",
+    "fuzzysearch-image",
+    "fuzzysearch-webhook",
+
     "fuzzysearch-ingest-e621",
     "fuzzysearch-ingest-furaffinity",
     "fuzzysearch-ingest-weasyl",
-    "fuzzysearch-webhook"
 ]
 
-[profile.dev]
+[profile.dev.package."*"]
 opt-level = 2
 debug = true
 
