@@ -11,7 +11,7 @@ use warp::{Rejection, Reply};
 use crate::models::image_query;
 use crate::types::*;
 use crate::Endpoints;
-use crate::{early_return, rate_limit, Pool, Tree};
+use crate::{early_return, rate_limit, Pool};
 use fuzzysearch_common::{
     trace::InjectContext,
     types::{SearchResult, SiteInfo},
@@ -160,7 +160,7 @@ pub async fn search_image(
     form: warp::multipart::FormData,
     opts: ImageSearchOpts,
     db: Pool,
-    tree: Tree,
+    bkapi: bkapi_client::BKApiClient,
     api_key: String,
     endpoints: Endpoints,
 ) -> Result<Box<dyn Reply>, Rejection> {
@@ -171,15 +171,15 @@ pub async fn search_image(
 
     let mut items = {
         if opts.search_type == Some(ImageSearchType::Force) {
-            image_query(db.clone(), tree.clone(), vec![num], 10)
+            image_query(db.clone(), bkapi.clone(), vec![num], 10)
                 .await
                 .unwrap()
         } else {
-            let results = image_query(db.clone(), tree.clone(), vec![num], 0)
+            let results = image_query(db.clone(), bkapi.clone(), vec![num], 0)
                 .await
                 .unwrap();
             if results.is_empty() && opts.search_type != Some(ImageSearchType::Exact) {
-                image_query(db.clone(), tree.clone(), vec![num], 10)
+                image_query(db.clone(), bkapi.clone(), vec![num], 10)
                     .await
                     .unwrap()
             } else {
@@ -219,7 +219,7 @@ pub async fn search_image(
 pub async fn search_hashes(
     opts: HashSearchOpts,
     db: Pool,
-    tree: Tree,
+    bkapi: bkapi_client::BKApiClient,
     api_key: String,
 ) -> Result<Box<dyn Reply>, Rejection> {
     let pool = db.clone();
@@ -238,7 +238,7 @@ pub async fn search_hashes(
     let image_remaining = rate_limit!(&api_key, &db, image_limit, "image", hashes.len() as i16);
 
     let results =
-        early_return!(image_query(pool, tree, hashes.clone(), opts.distance.unwrap_or(10),).await);
+        early_return!(image_query(pool, bkapi, hashes.clone(), opts.distance.unwrap_or(10)).await);
 
     let resp = warp::http::Response::builder()
         .header("x-rate-limit-total-image", image_remaining.1.to_string())
@@ -402,7 +402,7 @@ pub async fn check_handle(opts: HandleOpts, db: Pool) -> Result<Box<dyn Reply>, 
 pub async fn search_image_by_url(
     opts: UrlSearchOpts,
     db: Pool,
-    tree: Tree,
+    bkapi: bkapi_client::BKApiClient,
     api_key: String,
 ) -> Result<Box<dyn Reply>, Rejection> {
     use bytes::BufMut;
@@ -459,7 +459,7 @@ pub async fn search_image_by_url(
     let hash: [u8; 8] = hash.as_bytes().try_into().unwrap();
     let num = i64::from_be_bytes(hash);
 
-    let results = image_query(db.clone(), tree.clone(), vec![num], 3)
+    let results = image_query(db.clone(), bkapi.clone(), vec![num], 3)
         .await
         .unwrap();
 

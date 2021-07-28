@@ -2,15 +2,10 @@ use lazy_static::lazy_static;
 use prometheus::{register_histogram, Histogram};
 
 use crate::types::*;
-use crate::{Pool, Tree};
+use crate::Pool;
 use fuzzysearch_common::types::{SearchResult, SiteInfo};
 
 lazy_static! {
-    static ref IMAGE_TREE_DURATION: Histogram = register_histogram!(
-        "fuzzysearch_api_image_tree_seconds",
-        "Duration to search for hashes in tree"
-    )
-    .unwrap();
     static ref IMAGE_QUERY_DURATION: Histogram = register_histogram!(
         "fuzzysearch_api_image_query_seconds",
         "Duration to perform a single image lookup query"
@@ -51,28 +46,30 @@ struct HashSearch {
     distance: u64,
 }
 
-#[tracing::instrument(skip(pool, tree))]
+#[tracing::instrument(skip(pool, bkapi))]
 pub async fn image_query(
     pool: Pool,
-    tree: Tree,
+    bkapi: bkapi_client::BKApiClient,
     hashes: Vec<i64>,
     distance: i64,
 ) -> Result<Vec<SearchResult>, sqlx::Error> {
-    let timer = IMAGE_TREE_DURATION.start_timer();
-    let lock = tree.read().await;
-    let found_hashes: Vec<HashSearch> = hashes
-        .iter()
-        .flat_map(|hash| {
-            lock.find(&crate::Node::new(*hash), distance as u32)
-                .map(|(dist, node)| HashSearch {
-                    searched_hash: *hash,
-                    found_hash: node.num(),
-                    distance: dist as u64,
+    let found_hashes: Vec<HashSearch> = bkapi
+        .search_many(&hashes, distance as u64)
+        .await
+        .unwrap()
+        .into_iter()
+        .flat_map(|results| {
+            results
+                .hashes
+                .iter()
+                .map(|hash| HashSearch {
+                    searched_hash: results.hash,
+                    found_hash: hash.hash,
+                    distance: hash.distance,
                 })
                 .collect::<Vec<_>>()
         })
         .collect();
-    timer.stop_and_record();
 
     let timer = IMAGE_QUERY_DURATION.start_timer();
     let matches = sqlx::query!(

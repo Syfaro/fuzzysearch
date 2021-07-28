@@ -40,6 +40,6 @@ image = "0.23"
 img_hash = "3"
 hamming = "0.1"
 
-bk-tree = "0.4"
+bkapi-client = { git = "https://github.com/Syfaro/bkapi.git" }
 
 fuzzysearch-common = { path = "../fuzzysearch-common" }

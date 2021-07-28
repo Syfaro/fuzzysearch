@@ -1,4 +1,4 @@
-use crate::{handlers, Pool, Tree};
+use crate::{handlers, Pool};
 use crate::{types::*, Endpoints};
 use std::convert::Infallible;
 use tracing_futures::Instrument;
@@ -6,14 +6,14 @@ use warp::{Filter, Rejection, Reply};
 
 pub fn search(
     db: Pool,
-    tree: Tree,
+    bkapi: bkapi_client::BKApiClient,
     endpoints: Endpoints,
 ) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
-    search_image(db.clone(), tree.clone(), endpoints)
-        .or(search_hashes(db.clone(), tree.clone()))
+    search_image(db.clone(), bkapi.clone(), endpoints)
+        .or(search_hashes(db.clone(), bkapi.clone()))
         .or(search_file(db.clone()))
         .or(check_handle(db.clone()))
-        .or(search_image_by_url(db, tree))
+        .or(search_image_by_url(db, bkapi))
 }
 
 pub fn search_file(db: Pool) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
@@ -34,7 +34,7 @@ pub fn search_file(db: Pool) -> impl Filter<Extract = impl Reply, Error = Reject
 
 pub fn search_image(
     db: Pool,
-    tree: Tree,
+    bkapi: bkapi_client::BKApiClient,
     endpoints: Endpoints,
 ) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
     warp::path("image")
@@ -43,50 +43,51 @@ pub fn search_image(
         .and(warp::multipart::form().max_length(1024 * 1024 * 10))
         .and(warp::query::<ImageSearchOpts>())
         .and(with_pool(db))
-        .and(with_tree(tree))
+        .and(with_bkapi(bkapi))
         .and(with_api_key())
         .and(with_endpoints(endpoints))
-        .and_then(|headers, form, opts, pool, tree, api_key, endpoints| {
+        .and_then(|headers, form, opts, pool, bkapi, api_key, endpoints| {
             use tracing_opentelemetry::OpenTelemetrySpanExt;
 
             let span = tracing::info_span!("search_image", ?opts);
             span.set_parent(with_telem(headers));
             span.in_scope(|| {
-                handlers::search_image(form, opts, pool, tree, api_key, endpoints).in_current_span()
+                handlers::search_image(form, opts, pool, bkapi, api_key, endpoints)
+                    .in_current_span()
             })
         })
 }
 
 pub fn search_image_by_url(
     db: Pool,
-    tree: Tree,
+    bkapi: bkapi_client::BKApiClient,
 ) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
     warp::path("url")
         .and(warp::get())
         .and(warp::query::<UrlSearchOpts>())
         .and(with_pool(db))
-        .and(with_tree(tree))
+        .and(with_bkapi(bkapi))
         .and(with_api_key())
         .and_then(handlers::search_image_by_url)
 }
 
 pub fn search_hashes(
     db: Pool,
-    tree: Tree,
+    bkapi: bkapi_client::BKApiClient,
 ) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
     warp::path("hashes")
         .and(warp::header::headers_cloned())
         .and(warp::get())
         .and(warp::query::<HashSearchOpts>())
         .and(with_pool(db))
-        .and(with_tree(tree))
+        .and(with_bkapi(bkapi))
         .and(with_api_key())
-        .and_then(|headers, opts, db, tree, api_key| {
+        .and_then(|headers, opts, db, bkapi, api_key| {
             use tracing_opentelemetry::OpenTelemetrySpanExt;
 
             let span = tracing::info_span!("search_hashes", ?opts);
             span.set_parent(with_telem(headers));
-            span.in_scope(|| handlers::search_hashes(opts, db, tree, api_key).in_current_span())
+            span.in_scope(|| handlers::search_hashes(opts, db, bkapi, api_key).in_current_span())
         })
 }
 
@@ -106,8 +107,10 @@ fn with_pool(db: Pool) -> impl Filter<Extract = (Pool,), Error = Infallible> + C
     warp::any().map(move || db.clone())
 }
 
-fn with_tree(tree: Tree) -> impl Filter<Extract = (Tree,), Error = Infallible> + Clone {
-    warp::any().map(move || tree.clone())
+fn with_bkapi(
+    bkapi: bkapi_client::BKApiClient,
+) -> impl Filter<Extract = (bkapi_client::BKApiClient,), Error = Infallible> + Clone {
+    warp::any().map(move || bkapi.clone())
 }
 
 fn with_endpoints(

@@ -382,13 +382,18 @@ dependencies = [
 ]
 
 [[package]]
-name = "bk-tree"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6121f6e107e94d717b5ca2631d56e7c2ed1542a21b2eb87b4bda1d6c1420ef3f"
+name = "bkapi-client"
+version = "0.1.0"
+source = "git+https://github.com/Syfaro/bkapi.git#04e494ee31139885e9e4d9cd71323e139e6baed7"
 dependencies = [
- "fnv",
- "triple_accel",
+ "futures",
+ "opentelemetry",
+ "opentelemetry-http",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tracing",
+ "tracing-opentelemetry",
 ]
 
 [[package]]
@@ -1074,7 +1079,7 @@ dependencies = [
 name = "fuzzysearch"
 version = "0.2.0"
 dependencies = [
- "bk-tree",
+ "bkapi-client",
  "bytes",
  "chrono",
  "ffmpeg-next",
@@ -3029,9 +3034,9 @@ checksum = "fe0f37c9e8f3c5a4a66ad655a93c74daac4ad00c441533bf5c6e7990bb42604e"
 
 [[package]]
 name = "socket2"
-version = "0.4.0"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9e3dfc207c526015c632472a77be09cf1b6e46866581aecae5cc38fb4235dea2"
+checksum = "765f090f0e423d2b55843402a07915add955e7d60657db13707a159727326cad"
 dependencies = [
  "libc",
  "winapi",
@@ -3690,12 +3695,6 @@ dependencies = [
  "num-integer",
  "strength_reduce",
 ]
-
-[[package]]
-name = "triple_accel"
-version = "0.3.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "622b09ce2fe2df4618636fb92176d205662f59803f39e70d1c333393082de96c"
 
 [[package]]
 name = "try-lock"
