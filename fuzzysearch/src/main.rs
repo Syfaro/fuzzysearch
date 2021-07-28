@@ -38,6 +38,11 @@ impl bk_tree::Metric<Node> for Hamming {
     }
 }
 
+#[derive(Clone)]
+pub struct Endpoints {
+    pub hash_input: String,
+}
+
 #[tokio::main]
 async fn main() {
     fuzzysearch_common::trace::configure_tracing("fuzzysearch");
@@ -53,6 +58,10 @@ async fn main() {
 
     let tree: Tree = Arc::new(RwLock::new(bk_tree::BKTree::new(Hamming)));
 
+    let endpoints = Endpoints {
+        hash_input: std::env::var("ENDPOINT_HASH_INPUT").expect("Missing ENDPOINT_HASH_INPUT"),
+    };
+
     load_updates(db_pool.clone(), tree.clone()).await;
 
     let log = warp::log("fuzzysearch");
@@ -63,7 +72,7 @@ async fn main() {
 
     let options = warp::options().map(|| "✓");
 
-    let api = options.or(filters::search(db_pool, tree));
+    let api = options.or(filters::search(db_pool, tree, endpoints));
     let routes = api
         .or(warp::path::end()
             .map(|| warp::redirect(warp::http::Uri::from_static("https://fuzzysearch.net"))))

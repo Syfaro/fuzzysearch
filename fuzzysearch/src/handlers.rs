@@ -1,3 +1,6 @@
+use futures::StreamExt;
+use futures::TryStreamExt;
+use hyper::StatusCode;
 use lazy_static::lazy_static;
 use prometheus::{register_histogram, register_int_counter, Histogram, IntCounter};
 use std::convert::TryInto;
@@ -7,8 +10,12 @@ use warp::{Rejection, Reply};
 
 use crate::models::image_query;
 use crate::types::*;
+use crate::Endpoints;
 use crate::{early_return, rate_limit, Pool, Tree};
-use fuzzysearch_common::types::{SearchResult, SiteInfo};
+use fuzzysearch_common::{
+    trace::InjectContext,
+    types::{SearchResult, SiteInfo},
+};
 
 lazy_static! {
     static ref IMAGE_HASH_DURATION: Histogram = register_histogram!(
@@ -37,6 +44,7 @@ lazy_static! {
 enum Error {
     Postgres(sqlx::Error),
     Reqwest(reqwest::Error),
+    Warp(warp::Error),
     InvalidData,
     InvalidImage,
     ApiKey,
@@ -46,7 +54,7 @@ enum Error {
 impl warp::Reply for Error {
     fn into_response(self) -> warp::reply::Response {
         let msg = match self {
-            Error::Postgres(_) | Error::Reqwest(_) => ErrorMessage {
+            Error::Postgres(_) | Error::Reqwest(_) | Error::Warp(_) => ErrorMessage {
                 code: 500,
                 message: "Internal server error".to_string(),
             },
@@ -89,73 +97,59 @@ impl From<reqwest::Error> for Error {
     }
 }
 
-async fn get_field_bytes(form: warp::multipart::FormData, field: &str) -> bytes::BytesMut {
-    use bytes::BufMut;
-    use futures::StreamExt;
-
-    let parts: Vec<_> = form.collect().await;
-    let mut parts = parts
-        .into_iter()
-        .map(|part| {
-            let part = part.unwrap();
-            (part.name().to_string(), part)
-        })
-        .collect::<std::collections::HashMap<_, _>>();
-    let data = parts.remove(field).unwrap();
-
-    data.stream()
-        .fold(bytes::BytesMut::new(), |mut b, data| {
-            b.put(data.unwrap());
-            async move { b }
-        })
-        .await
+impl From<warp::Error> for Error {
+    fn from(err: warp::Error) -> Self {
+        Self::Warp(err)
+    }
 }
 
-#[tracing::instrument(skip(form))]
-async fn hash_input(form: warp::multipart::FormData) -> i64 {
-    let bytes = get_field_bytes(form, "image").await;
+#[tracing::instrument(skip(endpoints, form))]
+async fn hash_input(
+    endpoints: &Endpoints,
+    mut form: warp::multipart::FormData,
+) -> Result<i64, Error> {
+    let mut image_part = None;
 
-    let len = bytes.len();
-
-    let _timer = IMAGE_HASH_DURATION.start_timer();
-    let hash = tokio::task::spawn_blocking(move || {
-        let hasher = fuzzysearch_common::get_hasher();
-        let image = image::load_from_memory(&bytes).unwrap();
-        hasher.hash_image(&image)
-    })
-    .instrument(span!(tracing::Level::TRACE, "hashing image", len))
-    .await
-    .unwrap();
-    drop(_timer);
-
-    let mut buf: [u8; 8] = [0; 8];
-    buf.copy_from_slice(&hash.as_bytes());
-
-    i64::from_be_bytes(buf)
-}
-
-#[tracing::instrument(skip(form))]
-async fn hash_video(form: warp::multipart::FormData) -> Option<Vec<[u8; 8]>> {
-    use bytes::Buf;
-
-    let bytes = get_field_bytes(form, "video").await;
-
-    let _timer = VIDEO_HASH_DURATION.start_timer();
-    let hashes = tokio::task::spawn_blocking(move || {
-        if infer::is_video(&bytes) {
-            fuzzysearch_common::video::extract_video_hashes(bytes.reader()).ok()
-        } else if infer::image::is_gif(&bytes) {
-            fuzzysearch_common::video::extract_gif_hashes(bytes.reader()).ok()
-        } else {
-            None
+    while let Ok(Some(part)) = form.try_next().await {
+        if part.name() == "image" {
+            image_part = Some(part);
         }
-    })
-    .instrument(span!(tracing::Level::TRACE, "hashing video"))
-    .await
-    .unwrap();
-    drop(_timer);
+    }
 
-    hashes
+    let image_part = image_part.unwrap();
+
+    let bytes = image_part
+        .stream()
+        .fold(bytes::BytesMut::new(), |mut buf, chunk| {
+            use bytes::BufMut;
+
+            buf.put(chunk.unwrap());
+            async move { buf }
+        })
+        .await;
+    let part = reqwest::multipart::Part::bytes(bytes.to_vec());
+
+    let form = reqwest::multipart::Form::new().part("image", part);
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(&endpoints.hash_input)
+        .inject_context()
+        .multipart(form)
+        .send()
+        .await?;
+
+    if resp.status() != StatusCode::OK {
+        return Err(Error::InvalidImage);
+    }
+
+    let hash: i64 = resp
+        .text()
+        .await?
+        .parse()
+        .map_err(|_err| Error::InvalidImage)?;
+
+    Ok(hash)
 }
 
 pub async fn search_image(
@@ -164,11 +158,12 @@ pub async fn search_image(
     db: Pool,
     tree: Tree,
     api_key: String,
+    endpoints: Endpoints,
 ) -> Result<Box<dyn Reply>, Rejection> {
     let image_remaining = rate_limit!(&api_key, &db, image_limit, "image");
     let hash_remaining = rate_limit!(&api_key, &db, hash_limit, "hash");
 
-    let num = hash_input(form).await;
+    let num = early_return!(hash_input(&endpoints, form).await);
 
     let mut items = {
         if opts.search_type == Some(ImageSearchType::Force) {
@@ -383,16 +378,6 @@ pub async fn search_file(
         .unwrap();
 
     Ok(Box::new(resp))
-}
-
-pub async fn search_video(
-    form: warp::multipart::FormData,
-    _db: Pool,
-    _api_key: String,
-) -> Result<impl Reply, Rejection> {
-    let hashes = hash_video(form).await;
-
-    Ok(warp::reply::json(&hashes))
 }
 
 pub async fn check_handle(opts: HandleOpts, db: Pool) -> Result<Box<dyn Reply>, Rejection> {

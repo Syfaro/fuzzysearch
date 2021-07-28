@@ -84,3 +84,22 @@ pub async fn serve_metrics() {
         server.await.expect("Metrics server error");
     });
 }
+
+pub trait InjectContext {
+    fn inject_context(self: Self) -> Self;
+}
+
+impl InjectContext for reqwest::RequestBuilder {
+    fn inject_context(self: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        use tracing_opentelemetry::OpenTelemetrySpanExt;
+
+        let mut headers: reqwest::header::HeaderMap = Default::default();
+
+        let cx = tracing::Span::current().context();
+        opentelemetry::global::get_text_map_propagator(|propagator| {
+            propagator.inject_context(&cx, &mut opentelemetry_http::HeaderInjector(&mut headers))
+        });
+
+        self.headers(headers)
+    }
+}

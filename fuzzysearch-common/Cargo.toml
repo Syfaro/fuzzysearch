@@ -9,7 +9,7 @@ default = ["trace"]
 
 video = ["ffmpeg-next", "tempfile"]
 queue = ["faktory", "tokio", "serde_json"]
-trace = ["opentelemetry", "opentelemetry-jaeger", "tracing-opentelemetry", "opentelemetry-http", "hyper", "prometheus", "tokio"]
+trace = ["opentelemetry", "opentelemetry-jaeger", "tracing-opentelemetry", "opentelemetry-http", "hyper", "prometheus", "tokio", "reqwest"]
 
 [dependencies]
 anyhow = "1"
@@ -39,3 +39,4 @@ opentelemetry-http = { version = "0.2", optional = true }
 
 hyper = { version = "0.14", features = ["server", "http2", "tcp"], optional = true }
 prometheus = { version = "0.12", optional = true }
+reqwest = { version = "0.11", optional = true }
