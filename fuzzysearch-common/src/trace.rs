@@ -51,18 +51,29 @@ pub fn configure_tracing(service_name: &'static str) {
 }
 
 async fn metrics(
-    _: hyper::Request<hyper::Body>,
+    req: hyper::Request<hyper::Body>,
 ) -> Result<hyper::Response<hyper::Body>, std::convert::Infallible> {
-    use hyper::{Body, Response};
-    use prometheus::{Encoder, TextEncoder};
+    use hyper::{Body, Response, StatusCode};
 
-    let mut buffer = Vec::new();
-    let encoder = TextEncoder::new();
+    match req.uri().path() {
+        "/health" => Ok(Response::new(Body::from("OK"))),
+        "/metrics" => {
+            use prometheus::{Encoder, TextEncoder};
 
-    let metric_families = prometheus::gather();
-    encoder.encode(&metric_families, &mut buffer).unwrap();
+            let mut buffer = Vec::new();
+            let encoder = TextEncoder::new();
 
-    Ok(Response::new(Body::from(buffer)))
+            let metric_families = prometheus::gather();
+            encoder.encode(&metric_families, &mut buffer).unwrap();
+
+            Ok(Response::new(Body::from(buffer)))
+        }
+        _ => {
+            let mut not_found = Response::new(Body::default());
+            *not_found.status_mut() = StatusCode::NOT_FOUND;
+            Ok(not_found)
+        }
+    }
 }
 
 pub async fn serve_metrics() {
