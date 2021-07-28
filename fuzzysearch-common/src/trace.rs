@@ -2,6 +2,8 @@ pub fn configure_tracing(service_name: &'static str) {
     use opentelemetry::KeyValue;
     use tracing_subscriber::layer::SubscriberExt;
 
+    tracing_log::LogTracer::init().unwrap();
+
     let env = std::env::var("ENVIRONMENT");
     let env = if let Ok(env) = env.as_ref() {
         env.as_str()
@@ -86,7 +88,7 @@ pub async fn serve_metrics() {
 }
 
 pub trait InjectContext {
-    fn inject_context(self: Self) -> Self;
+    fn inject_context(self) -> Self;
 }
 
 impl InjectContext for reqwest::RequestBuilder {

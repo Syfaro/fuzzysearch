@@ -9,7 +9,7 @@ pub fn search(
     tree: Tree,
     endpoints: Endpoints,
 ) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
-    search_image(db.clone(), tree.clone(), endpoints.clone())
+    search_image(db.clone(), tree.clone(), endpoints)
         .or(search_hashes(db.clone(), tree.clone()))
         .or(search_file(db.clone()))
         .or(check_handle(db.clone()))

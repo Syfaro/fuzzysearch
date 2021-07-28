@@ -15,10 +15,10 @@ trace = ["opentelemetry", "opentelemetry-jaeger", "tracing-opentelemetry", "open
 anyhow = "1"
 tracing = "0.1"
 tracing-subscriber = "0.2"
+tracing-log = "0.1"
 
 tokio = { version = "1", features = ["rt"], optional = true }
 futures = "0.3"
-surf = { version = "2", default-features = false, features = ["hyper-client"] }
 
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", optional = true }
@@ -32,10 +32,10 @@ tempfile = { version = "3", optional = true }
 
 faktory = { version = "0.11", optional = true }
 
-opentelemetry = { version = "0.13.0", features = ["rt-tokio"], optional = true }
-opentelemetry-jaeger = { version = "0.12", features = ["tokio"], optional = true }
-tracing-opentelemetry = { version = "0.12", optional = true }
-opentelemetry-http = { version = "0.2", optional = true }
+opentelemetry = { version = "0.15.0", features = ["rt-tokio"], optional = true }
+opentelemetry-jaeger = { version = "0.14", features = ["tokio"], optional = true }
+tracing-opentelemetry = { version = "0.14", optional = true }
+opentelemetry-http = { version = "0.4", optional = true }
 
 hyper = { version = "0.14", features = ["server", "http2", "tcp"], optional = true }
 prometheus = { version = "0.12", optional = true }

@@ -63,11 +63,11 @@ pub async fn image_query(
     let found_hashes: Vec<HashSearch> = hashes
         .iter()
         .flat_map(|hash| {
-            lock.find(&crate::Node::new(*hash), distance as u64)
+            lock.find(&crate::Node::new(*hash), distance as u32)
                 .map(|(dist, node)| HashSearch {
                     searched_hash: *hash,
                     found_hash: node.num(),
-                    distance: dist,
+                    distance: dist as u64,
                 })
                 .collect::<Vec<_>>()
         })

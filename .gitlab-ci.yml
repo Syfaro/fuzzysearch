@@ -4,11 +4,7 @@ stages:
     - image
 
 variables:
-    CARGO_HOME: /root/.cargo
-    SCCACHE_VERSION: v0.2.15
-    SCCACHE_S3_USE_SSL: "true"
-    SCCACHE_BUCKET: "sccache"
-
+    CARGO_HOME: "$CI_PROJECT_DIR/.cargo"
     SQLX_OFFLINE: "true"
 
 # Cache should only be updated once, default to pull only
@@ -28,11 +24,8 @@ test:latest: &base_test
         <<: *global_cache
         policy: pull-push
     before_script:
-        # Use proxy for apt, install wget to download sccache and other deps
-        - export http_proxy=$DEBIAN_PROXY
         - apt-get update -y
-        - apt-get install -y wget libssl-dev pkg-config libavcodec-dev libavformat-dev libavutil-dev libavdevice-dev clang llvm python3 python3-pip
-        - unset http_proxy
+        - apt-get install -y libssl-dev pkg-config libavcodec-dev libavformat-dev libavutil-dev libavdevice-dev clang llvm python3 python3-pip
     script:
         # Build, test, and show stats
         - cargo build --verbose

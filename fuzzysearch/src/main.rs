@@ -33,8 +33,12 @@ impl Node {
 pub struct Hamming;
 
 impl bk_tree::Metric<Node> for Hamming {
-    fn distance(&self, a: &Node, b: &Node) -> u64 {
-        hamming::distance_fast(&a.0, &b.0).unwrap()
+    fn distance(&self, a: &Node, b: &Node) -> u32 {
+        hamming::distance_fast(&a.0, &b.0).unwrap() as u32
+    }
+
+    fn threshold_distance(&self, a: &Node, b: &Node, _threshold: u32) -> Option<u32> {
+        Some(self.distance(a, b))
     }
 }
 

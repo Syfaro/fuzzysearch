@@ -110,6 +110,7 @@ async fn hash_input(
 ) -> Result<i64, Error> {
     let mut image_part = None;
 
+    tracing::debug!("looking at image parts");
     while let Ok(Some(part)) = form.try_next().await {
         if part.name() == "image" {
             image_part = Some(part);
@@ -118,6 +119,7 @@ async fn hash_input(
 
     let image_part = image_part.unwrap();
 
+    tracing::debug!("found image part, reading data");
     let bytes = image_part
         .stream()
         .fold(bytes::BytesMut::new(), |mut buf, chunk| {
@@ -131,6 +133,7 @@ async fn hash_input(
 
     let form = reqwest::multipart::Form::new().part("image", part);
 
+    tracing::debug!("sending image to hash input service");
     let client = reqwest::Client::new();
     let resp = client
         .post(&endpoints.hash_input)
@@ -139,6 +142,7 @@ async fn hash_input(
         .send()
         .await?;
 
+    tracing::debug!("got response");
     if resp.status() != StatusCode::OK {
         return Err(Error::InvalidImage);
     }
