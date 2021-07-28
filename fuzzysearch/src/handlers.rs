@@ -117,7 +117,7 @@ async fn hash_input(
         }
     }
 
-    let image_part = image_part.unwrap();
+    let image_part = image_part.ok_or(Error::InvalidImage)?;
 
     tracing::debug!("found image part, reading data");
     let bytes = image_part

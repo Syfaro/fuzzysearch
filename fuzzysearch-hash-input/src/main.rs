@@ -56,18 +56,18 @@ async fn process_image(
     tracing::debug!("writing contents to temp file");
     let mut size = 0;
     while let Ok(Some(chunk)) = field.try_next().await {
-        file.write_all(&chunk).await.unwrap();
+        file.write_all(&chunk).await?;
         size += chunk.len();
     }
     tracing::debug!("file was {} bytes", size);
 
     tracing::debug!("returning file to beginning");
-    file.seek(SeekFrom::Start(0)).await.unwrap();
+    file.seek(SeekFrom::Start(0)).await?;
     let file = file.into_std().await;
     loading_duration.stop_and_record();
 
     tracing::debug!("getting semaphore permit");
-    let _permit = semaphore.acquire().await.unwrap();
+    let _permit = semaphore.acquire().await?;
 
     tracing::debug!("decoding and hashing image");
     let hash = tokio::task::spawn_blocking(move || -> anyhow::Result<i64, anyhow::Error> {
