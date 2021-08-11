@@ -83,10 +83,10 @@ async fn insert_submission(
     client: &Client,
     sub: &furaffinity_rs::Submission,
 ) -> Result<(), tokio_postgres::Error> {
-    let artist_id = lookup_artist(&client, &sub.artist).await;
+    let artist_id = lookup_artist(client, &sub.artist).await;
     let mut tag_ids = Vec::with_capacity(sub.tags.len());
     for tag in &sub.tags {
-        tag_ids.push(lookup_tag(&client, &tag).await);
+        tag_ids.push(lookup_tag(client, tag).await);
     }
 
     let hash = sub.hash.clone();
@@ -157,7 +157,7 @@ async fn process_submission(
     faktory: &FaktoryClient,
     id: i32,
 ) {
-    if has_submission(&client, id).await {
+    if has_submission(client, id).await {
         return;
     }
 
@@ -175,7 +175,7 @@ async fn process_submission(
         Err(err) => {
             tracing::error!("Failed to load submission: {:?}", err);
             _timer.stop_and_discard();
-            insert_null_submission(&client, id).await.unwrap_or_log();
+            insert_null_submission(client, id).await.unwrap_or_log();
             return;
         }
     };
@@ -185,7 +185,7 @@ async fn process_submission(
         None => {
             tracing::warn!("Submission did not exist");
             _timer.stop_and_discard();
-            insert_null_submission(&client, id).await.unwrap_or_log();
+            insert_null_submission(client, id).await.unwrap_or_log();
             return;
         }
     };
@@ -220,7 +220,7 @@ async fn process_submission(
         tracing::error!("Unable to queue webhook: {:?}", err);
     }
 
-    insert_submission(&client, &sub).await.unwrap_or_log();
+    insert_submission(client, &sub).await.unwrap_or_log();
 }
 
 #[tokio::main]

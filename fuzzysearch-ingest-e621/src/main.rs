@@ -87,7 +87,7 @@ async fn main() -> anyhow::Result<()> {
         drop(_hist);
 
         let posts = get_page_posts(&page)?;
-        let post_ids = get_post_ids(&posts);
+        let post_ids = get_post_ids(posts);
 
         tracing::trace!(?post_ids, "Collected posts");
 
@@ -181,7 +181,7 @@ async fn get_latest_id(client: &reqwest::Client, auth: &Auth) -> anyhow::Result<
 
     let posts = get_page_posts(&page)?;
 
-    let id = get_post_ids(&posts)
+    let id = get_post_ids(posts)
         .into_iter()
         .max()
         .context("Page had no IDs")?;
@@ -236,10 +236,10 @@ async fn insert_submission(
 
     tracing::trace!(?post, "Evaluating post");
 
-    let (hash, hash_error, sha256): ImageData = if let Some((url, ext)) = get_post_url_ext(&post) {
+    let (hash, hash_error, sha256): ImageData = if let Some((url, ext)) = get_post_url_ext(post) {
         let (hash, hash_error, sha256) =
             if url != "/images/deleted-preview.png" && (ext == "jpg" || ext == "png") {
-                load_image(&client, &url).await?
+                load_image(client, url).await?
             } else {
                 tracing::debug!("Ignoring post as it is deleted or not a supported image format");
 
