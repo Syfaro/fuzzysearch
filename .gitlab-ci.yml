@@ -1,0 +1,146 @@
+stages:
+    - test
+    - build
+    - image
+
+variables:
+    CARGO_HOME: "$CI_PROJECT_DIR/.cargo"
+    SQLX_OFFLINE: "true"
+
+# Cache should only be updated once, default to pull only
+cache: &global_cache
+    key:
+        files:
+            - Cargo.lock
+    paths:
+        - .cargo/
+    policy: pull
+
+# Run tests on current stable Rust version
+test:latest: &base_test
+    image: rust:1.53-slim-buster
+    stage: test
+    cache:
+        <<: *global_cache
+        policy: pull-push
+    before_script:
+        - apt-get update -y
+        - apt-get install -y libssl-dev pkg-config libavcodec-dev libavformat-dev libavutil-dev libavdevice-dev clang llvm python3 python3-pip
+    script:
+        # Build, test, and show stats
+        - cargo build --verbose
+        - cargo test --verbose
+
+# Same as above, but nightly Rust
+test:nightly:
+    <<: *base_test
+    image: rustlang/rust:nightly-slim
+    allow_failure: true
+
+build:api: &base_build
+    <<: *base_test
+    stage: build
+    cache:
+        <<: *global_cache
+        policy: pull
+    needs: ['test:latest']
+    artifacts:
+        expire_in: 1 day
+        paths:
+            - ./fuzzysearch/fuzzysearch
+    script:
+        - cargo build --verbose --release --bin fuzzysearch
+        - mv ./target/release/fuzzysearch ./fuzzysearch/fuzzysearch
+
+build:webhook:
+    <<: *base_build
+    artifacts:
+        expire_in: 1 day
+        paths:
+            - ./fuzzysearch-webhook/fuzzysearch-webhook
+    script:
+        - cargo build --verbose --release --bin fuzzysearch-webhook
+        - mv ./target/release/fuzzysearch-webhook ./fuzzysearch-webhook/fuzzysearch-webhook
+
+build:hash-input:
+    <<: *base_build
+    artifacts:
+        expire_in: 1 day
+        paths:
+            - ./fuzzysearch-hash-input/fuzzysearch-hash-input
+    script:
+        - cargo build --verbose --release --bin fuzzysearch-hash-input
+        - mv ./target/release/fuzzysearch-hash-input ./fuzzysearch-hash-input/fuzzysearch-hash-input
+
+build:ingest-e621:
+    <<: *base_build
+    artifacts:
+        expire_in: 1 day
+        paths:
+            - ./fuzzysearch-ingest-e621/fuzzysearch-ingest-e621
+    script:
+        - cargo build --verbose --release --bin fuzzysearch-ingest-e621
+        - mv ./target/release/fuzzysearch-ingest-e621 ./fuzzysearch-ingest-e621/fuzzysearch-ingest-e621
+
+build:ingest-furaffinity:
+    <<: *base_build
+    artifacts:
+        expire_in: 1 day
+        paths:
+            - ./fuzzysearch-ingest-furaffinity/fuzzysearch-ingest-furaffinity
+    script:
+        - cargo build --verbose --release --bin fuzzysearch-ingest-furaffinity
+        - mv ./target/release/fuzzysearch-ingest-furaffinity ./fuzzysearch-ingest-furaffinity/fuzzysearch-ingest-furaffinity
+
+build:ingest-weasyl:
+    <<: *base_build
+    artifacts:
+        expire_in: 1 day
+        paths:
+            - ./fuzzysearch-ingest-weasyl/fuzzysearch-ingest-weasyl
+    script:
+        - cargo build --verbose --release --bin fuzzysearch-ingest-weasyl
+        - mv ./target/release/fuzzysearch-ingest-weasyl ./fuzzysearch-ingest-weasyl/fuzzysearch-ingest-weasyl
+
+images:api: &base_images
+    stage: image
+    image:
+        name: gcr.io/kaniko-project/executor:debug
+        entrypoint: [""]
+    cache: {}
+    before_script:
+        - mkdir -p /kaniko/.docker
+        - echo "{\"auths\":{\"$CI_REGISTRY\":{\"auth\":\"$(echo -n ${CI_REGISTRY_USER}:${CI_REGISTRY_PASSWORD} | base64)\"}}}" > /kaniko/.docker/config.json
+    needs: ['build:api']
+    script:
+        - /kaniko/executor --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/fuzzysearch/Dockerfile --destination $CI_REGISTRY_IMAGE/api:$CI_COMMIT_SHA --destination $CI_REGISTRY_IMAGE/api:latest --cache=true
+
+images:webhook:
+    <<: *base_images
+    needs: ['build:webhook']
+    script:
+        - /kaniko/executor --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/fuzzysearch-webhook/Dockerfile --destination $CI_REGISTRY_IMAGE/webhook:$CI_COMMIT_SHA --destination $CI_REGISTRY_IMAGE/webhook:latest --cache=true
+
+images:hash-input:
+    <<: *base_images
+    needs: ['build:hash-input']
+    script:
+        - /kaniko/executor --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/fuzzysearch-hash-input/Dockerfile --destination $CI_REGISTRY_IMAGE/hash-input:$CI_COMMIT_SHA --destination $CI_REGISTRY_IMAGE/hash-input:latest --cache=true
+
+images:ingest-e621:
+    <<: *base_images
+    needs: ['build:ingest-e621']
+    script:
+        - /kaniko/executor --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/fuzzysearch-ingest-e621/Dockerfile --destination $CI_REGISTRY_IMAGE/ingest-e621:$CI_COMMIT_SHA --destination $CI_REGISTRY_IMAGE/ingest-e621:latest --cache=true
+
+images:ingest-furaffinity:
+    <<: *base_images
+    needs: ['build:ingest-furaffinity']
+    script:
+        - /kaniko/executor --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/fuzzysearch-ingest-furaffinity/Dockerfile --destination $CI_REGISTRY_IMAGE/ingest-furaffinity:$CI_COMMIT_SHA --destination $CI_REGISTRY_IMAGE/ingest-furaffinity:latest --cache=true
+
+images:ingest-weasyl:
+    <<: *base_images
+    needs: ['build:ingest-weasyl']
+    script:
+        - /kaniko/executor --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/fuzzysearch-ingest-weasyl/Dockerfile --destination $CI_REGISTRY_IMAGE/ingest-weasyl:$CI_COMMIT_SHA --destination $CI_REGISTRY_IMAGE/ingest-weasyl:latest --cache=true

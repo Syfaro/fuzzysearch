@@ -27,7 +27,7 @@ pub enum WebhookError {
 }
 
 fn main() {
-    fuzzysearch_common::init_logger();
+    fuzzysearch_common::trace::configure_tracing("fuzzysearch-webhook");
 
     tracing::info!("Starting...");
 
