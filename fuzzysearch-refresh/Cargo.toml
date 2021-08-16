@@ -14,7 +14,7 @@ tokio = "1"
 tokio-stream = "0.1"
 futures = "0.3"
 
-faktory = { git = "https://github.com/Syfaro/faktory-rs", rev = "d1a145562a405427c80bea5760b2b169d8d02d94" }
+faktory = "0.11"
 sqlx = { version = "0.5", features = ["runtime-tokio-native-tls", "postgres", "macros", "json", "offline", "chrono"] }
 
 chrono = "0.4"
