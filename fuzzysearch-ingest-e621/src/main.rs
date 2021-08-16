@@ -30,9 +30,8 @@ type Auth = (String, Option<String>);
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    fuzzysearch_common::init_logger();
-
-    create_metrics_server().await;
+    fuzzysearch_common::trace::configure_tracing("fuzzysearch-ingest-e621");
+    fuzzysearch_common::trace::serve_metrics().await;
 
     let login = std::env::var("E621_LOGIN").expect_or_log("Missing E621_LOGIN");
     let api_key = std::env::var("E621_API_KEY").expect_or_log("Missing E621_API_KEY");
@@ -88,7 +87,7 @@ async fn main() -> anyhow::Result<()> {
         drop(_hist);
 
         let posts = get_page_posts(&page)?;
-        let post_ids = get_post_ids(&posts);
+        let post_ids = get_post_ids(posts);
 
         tracing::trace!(?post_ids, "Collected posts");
 
@@ -182,7 +181,7 @@ async fn get_latest_id(client: &reqwest::Client, auth: &Auth) -> anyhow::Result<
 
     let posts = get_page_posts(&page)?;
 
-    let id = get_post_ids(&posts)
+    let id = get_post_ids(posts)
         .into_iter()
         .max()
         .context("Page had no IDs")?;
@@ -237,10 +236,10 @@ async fn insert_submission(
 
     tracing::trace!(?post, "Evaluating post");
 
-    let (hash, hash_error, sha256): ImageData = if let Some((url, ext)) = get_post_url_ext(&post) {
+    let (hash, hash_error, sha256): ImageData = if let Some((url, ext)) = get_post_url_ext(post) {
         let (hash, hash_error, sha256) =
             if url != "/images/deleted-preview.png" && (ext == "jpg" || ext == "png") {
-                load_image(&client, &url).await?
+                load_image(client, url).await?
             } else {
                 tracing::debug!("Ignoring post as it is deleted or not a supported image format");
 
@@ -344,42 +343,4 @@ async fn load_image(client: &reqwest::Client, url: &str) -> anyhow::Result<Image
     tracing::trace!(?hash, "Calculated image hash");
 
     Ok((Some(hash), None, Some(result)))
-}
-
-async fn provide_metrics(
-    _: hyper::Request<hyper::Body>,
-) -> Result<hyper::Response<hyper::Body>, std::convert::Infallible> {
-    use hyper::{Body, Response};
-    use prometheus::{Encoder, TextEncoder};
-
-    let mut buffer = Vec::new();
-    let encoder = TextEncoder::new();
-
-    let metric_families = prometheus::gather();
-    encoder
-        .encode(&metric_families, &mut buffer)
-        .unwrap_or_log();
-
-    Ok(Response::new(Body::from(buffer)))
-}
-
-async fn create_metrics_server() {
-    use hyper::{
-        service::{make_service_fn, service_fn},
-        Server,
-    };
-    use std::convert::Infallible;
-    use std::net::SocketAddr;
-
-    let make_svc =
-        make_service_fn(|_conn| async { Ok::<_, Infallible>(service_fn(provide_metrics)) });
-
-    let addr: SocketAddr = std::env::var("METRICS_HOST")
-        .expect_or_log("Missing METRICS_HOST")
-        .parse()
-        .expect_or_log("Invalid METRICS_HOST");
-
-    let server = Server::bind(&addr).serve(make_svc);
-
-    tokio::spawn(async move { server.await.expect_or_log("Metrics server error") });
 }

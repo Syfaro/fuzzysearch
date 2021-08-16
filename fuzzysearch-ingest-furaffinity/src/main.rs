@@ -83,10 +83,10 @@ async fn insert_submission(
     client: &Client,
     sub: &furaffinity_rs::Submission,
 ) -> Result<(), tokio_postgres::Error> {
-    let artist_id = lookup_artist(&client, &sub.artist).await;
+    let artist_id = lookup_artist(client, &sub.artist).await;
     let mut tag_ids = Vec::with_capacity(sub.tags.len());
     for tag in &sub.tags {
-        tag_ids.push(lookup_tag(&client, &tag).await);
+        tag_ids.push(lookup_tag(client, tag).await);
     }
 
     let hash = sub.hash.clone();
@@ -113,51 +113,6 @@ async fn insert_null_submission(client: &Client, id: i32) -> Result<u64, tokio_p
     client
         .execute("INSERT INTO SUBMISSION (id) VALUES ($1)", &[&id])
         .await
-}
-
-async fn request(
-    req: hyper::Request<hyper::Body>,
-) -> Result<hyper::Response<hyper::Body>, hyper::Error> {
-    match (req.method(), req.uri().path()) {
-        (&hyper::Method::GET, "/health") => Ok(hyper::Response::new(hyper::Body::from("OK"))),
-
-        (&hyper::Method::GET, "/metrics") => {
-            use prometheus::Encoder;
-
-            let encoder = prometheus::TextEncoder::new();
-
-            let metric_families = prometheus::gather();
-            let mut buffer = vec![];
-            encoder
-                .encode(&metric_families, &mut buffer)
-                .unwrap_or_log();
-
-            Ok(hyper::Response::new(hyper::Body::from(buffer)))
-        }
-
-        _ => {
-            let mut not_found = hyper::Response::default();
-            *not_found.status_mut() = hyper::StatusCode::NOT_FOUND;
-            Ok(not_found)
-        }
-    }
-}
-
-async fn web() {
-    use hyper::service::{make_service_fn, service_fn};
-
-    let addr: std::net::SocketAddr = std::env::var("HTTP_HOST")
-        .expect_or_log("Missing HTTP_HOST")
-        .parse()
-        .unwrap_or_log();
-
-    let service = make_service_fn(|_| async { Ok::<_, hyper::Error>(service_fn(request)) });
-
-    let server = hyper::Server::bind(&addr).serve(service);
-
-    tracing::info!("Listening on http://{}", addr);
-
-    server.await.unwrap_or_log();
 }
 
 struct RetryHandler {
@@ -202,7 +157,7 @@ async fn process_submission(
     faktory: &FaktoryClient,
     id: i32,
 ) {
-    if has_submission(&client, id).await {
+    if has_submission(client, id).await {
         return;
     }
 
@@ -220,7 +175,7 @@ async fn process_submission(
         Err(err) => {
             tracing::error!("Failed to load submission: {:?}", err);
             _timer.stop_and_discard();
-            insert_null_submission(&client, id).await.unwrap_or_log();
+            insert_null_submission(client, id).await.unwrap_or_log();
             return;
         }
     };
@@ -230,7 +185,7 @@ async fn process_submission(
         None => {
             tracing::warn!("Submission did not exist");
             _timer.stop_and_discard();
-            insert_null_submission(&client, id).await.unwrap_or_log();
+            insert_null_submission(client, id).await.unwrap_or_log();
             return;
         }
     };
@@ -265,12 +220,13 @@ async fn process_submission(
         tracing::error!("Unable to queue webhook: {:?}", err);
     }
 
-    insert_submission(&client, &sub).await.unwrap_or_log();
+    insert_submission(client, &sub).await.unwrap_or_log();
 }
 
 #[tokio::main]
 async fn main() {
-    fuzzysearch_common::init_logger();
+    fuzzysearch_common::trace::configure_tracing("fuzzysearch-ingest-furaffinity");
+    fuzzysearch_common::trace::serve_metrics().await;
 
     let (cookie_a, cookie_b) = (
         std::env::var("FA_A").expect_or_log("Missing FA_A"),
@@ -296,8 +252,6 @@ async fn main() {
             panic!("PostgreSQL connection error: {:?}", e);
         }
     });
-
-    tokio::spawn(async move { web().await });
 
     let faktory_dsn = std::env::var("FAKTORY_URL").expect_or_log("Missing FAKTORY_URL");
     let faktory = FaktoryClient::connect(faktory_dsn)

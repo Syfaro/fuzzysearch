@@ -1,19 +1,18 @@
 [workspace]
 members = [
-    "fuzzysearch",
     "fuzzysearch-common",
+
+    "fuzzysearch",
+    "fuzzysearch-hash-input",
+    "fuzzysearch-webhook",
+
     "fuzzysearch-ingest-e621",
     "fuzzysearch-ingest-furaffinity",
     "fuzzysearch-ingest-weasyl",
-    "fuzzysearch-webhook",
-    "fuzzysearch-refresh"
+
+    "fuzzysearch-refresh",
 ]
 
-[profile.dev]
+[profile.dev.package."*"]
 opt-level = 2
 debug = true
-
-[profile.release]
-lto = true
-codegen-units = 1
-opt-level = 3
