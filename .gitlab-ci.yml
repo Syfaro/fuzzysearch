@@ -102,6 +102,16 @@ build:ingest-weasyl:
         - cargo build --verbose --release --bin fuzzysearch-ingest-weasyl
         - mv ./target/release/fuzzysearch-ingest-weasyl ./fuzzysearch-ingest-weasyl/fuzzysearch-ingest-weasyl
 
+build:refresh:
+    <<: *base_build
+    artifacts:
+        expire_in: 1 day
+        paths:
+            - ./fuzzysearch-refresh/fuzzysearch-refresh
+    script:
+        - cargo build --verbose --release --bin fuzzysearch-refresh
+        - mv ./target/release/fuzzysearch-refresh ./fuzzysearch-refresh/fuzzysearch-refresh
+
 images:api: &base_images
     stage: image
     image:
@@ -144,3 +154,9 @@ images:ingest-weasyl:
     needs: ['build:ingest-weasyl']
     script:
         - /kaniko/executor --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/fuzzysearch-ingest-weasyl/Dockerfile --destination $CI_REGISTRY_IMAGE/ingest-weasyl:$CI_COMMIT_SHA --destination $CI_REGISTRY_IMAGE/ingest-weasyl:latest --cache=true
+
+images:refresh:
+    <<: *base_images
+    needs: ['build:refresh']
+    script:
+        - /kaniko/executor --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/fuzzysearch-refresh/Dockerfile --destination $CI_REGISTRY_IMAGE/refresh:$CI_COMMIT_SHA --destination $CI_REGISTRY_IMAGE/refresh:latest --cache=true
