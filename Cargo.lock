@@ -989,7 +989,7 @@ checksum = "fed34cd105917e91daa4da6b3728c47b068749d6a62c59811f06ed2ac71d9da7"
 [[package]]
 name = "furaffinity-rs"
 version = "0.1.0"
-source = "git+https://github.com/Syfaro/furaffinity-rs#2c0a8f0c93df0f5d2e1cbf80f21d43c3693621dc"
+source = "git+https://github.com/Syfaro/furaffinity-rs#d1549a48d4c8bc01d58c114c7b5c1618a4b9ef1e"
 dependencies = [
  "chrono",
  "image",
