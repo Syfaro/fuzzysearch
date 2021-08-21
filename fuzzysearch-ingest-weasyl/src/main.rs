@@ -127,6 +127,7 @@ async fn process_submission(
     faktory: &FaktoryClient,
     body: serde_json::Value,
     sub: WeasylSubmission,
+    download_folder: &Option<String>,
 ) -> anyhow::Result<()> {
     tracing::debug!("Processing submission");
 
@@ -135,7 +136,8 @@ async fn process_submission(
         .send()
         .await?
         .bytes()
-        .await?;
+        .await?
+        .to_vec();
 
     let num = if let Ok(image) = image::load_from_memory(&data) {
         let hasher = fuzzysearch_common::get_hasher();
@@ -153,6 +155,12 @@ async fn process_submission(
     let mut hasher = Sha256::new();
     hasher.update(&data);
     let result: [u8; 32] = hasher.finalize().into();
+
+    if let Some(folder) = download_folder {
+        if let Err(err) = fuzzysearch_common::download::write_bytes(folder, &result, &data).await {
+            tracing::error!("Could not download image: {:?}", err);
+        }
+    }
 
     sqlx::query!(
         "INSERT INTO weasyl (id, hash, sha256, file_size, data) VALUES ($1, $2, $3, $4, $5)",
@@ -202,6 +210,7 @@ async fn main() {
     fuzzysearch_common::trace::serve_metrics().await;
 
     let api_key = std::env::var("WEASYL_APIKEY").unwrap_or_log();
+    let download_folder = std::env::var("DOWNLOAD_FOLDER").ok();
 
     let pool = sqlx::postgres::PgPoolOptions::new()
         .max_connections(2)
@@ -238,9 +247,11 @@ async fn main() {
             }
 
             match load_submission(&client, &api_key, id).await.unwrap_or_log() {
-                (Some(sub), json) => process_submission(&pool, &client, &faktory, json, sub)
-                    .await
-                    .unwrap_or_log(),
+                (Some(sub), json) => {
+                    process_submission(&pool, &client, &faktory, json, sub, &download_folder)
+                        .await
+                        .unwrap_or_log()
+                }
                 (None, body) => insert_null(&pool, body, id).await.unwrap_or_log(),
             }
         }

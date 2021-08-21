@@ -24,4 +24,3 @@ fuzzysearch-common = { path = "../fuzzysearch-common", features = ["queue"] }
 [dependencies.furaffinity-rs]
 git = "https://github.com/Syfaro/furaffinity-rs"
 branch = "main"
-features = ["cloudflare-bypass"]

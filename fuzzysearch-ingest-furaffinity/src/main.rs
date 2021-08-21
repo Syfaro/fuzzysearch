@@ -150,12 +150,13 @@ impl futures_retry::ErrorHandler<furaffinity_rs::Error> for RetryHandler {
     }
 }
 
-#[tracing::instrument(skip(client, fa, faktory))]
+#[tracing::instrument(skip(client, fa, faktory, download_folder))]
 async fn process_submission(
     client: &Client,
     fa: &furaffinity_rs::FurAffinity,
     faktory: &FaktoryClient,
     id: i32,
+    download_folder: &Option<String>,
 ) {
     if has_submission(client, id).await {
         return;
@@ -204,6 +205,14 @@ async fn process_submission(
         }
     };
 
+    if let (Some(folder), Some(sha256), Some(bytes)) =
+        (download_folder, &sub.file_sha256, &sub.file)
+    {
+        if let Err(err) = fuzzysearch_common::download::write_bytes(folder, sha256, bytes).await {
+            tracing::error!("Could not download image: {:?}", err);
+        }
+    }
+
     _timer.stop_and_record();
 
     if let Err(err) = faktory
@@ -232,6 +241,8 @@ async fn main() {
         std::env::var("FA_A").expect_or_log("Missing FA_A"),
         std::env::var("FA_B").expect_or_log("Missing FA_B"),
     );
+
+    let download_folder = std::env::var("DOWNLOAD_FOLDER").ok();
 
     let user_agent = std::env::var("USER_AGENT").expect_or_log("Missing USER_AGENT");
     let client = reqwest::Client::builder()
@@ -281,7 +292,7 @@ async fn main() {
             .set(online.other as i64);
 
         for id in ids_to_check(&client, latest_id.0).await {
-            process_submission(&client, &fa, &faktory, id).await;
+            process_submission(&client, &fa, &faktory, id, &download_folder).await;
         }
 
         tracing::info!("Completed fetch, waiting a minute before loading more");
