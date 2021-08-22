@@ -1,18 +1,38 @@
 use lazy_static::lazy_static;
+use prometheus::{
+    register_counter, register_histogram, register_int_gauge_vec, Counter, Histogram,
+    HistogramOpts, IntGaugeVec, Opts,
+};
 use tokio_postgres::Client;
 use tracing_unwrap::{OptionExt, ResultExt};
 
 use fuzzysearch_common::faktory::FaktoryClient;
 
 lazy_static! {
-    static ref SUBMISSION_DURATION: prometheus::Histogram = prometheus::register_histogram!(
-        "fuzzysearch_watcher_fa_processing_seconds",
-        "Duration to process a submission"
+    static ref INDEX_DURATION: Histogram = register_histogram!(HistogramOpts::new(
+        "fuzzysearch_watcher_index_duration_seconds",
+        "Duration to load an index of submissions"
     )
+    .const_label("site", "furaffinity"))
     .unwrap_or_log();
-    static ref USERS_ONLINE: prometheus::IntGaugeVec = prometheus::register_int_gauge_vec!(
-        "fuzzysearch_watcher_fa_users_online_count",
-        "Number of users online for each category",
+    static ref SUBMISSION_DURATION: Histogram = register_histogram!(HistogramOpts::new(
+        "fuzzysearch_watcher_submission_duration_seconds",
+        "Duration to load an index of submissions"
+    )
+    .const_label("site", "furaffinity"))
+    .unwrap_or_log();
+    static ref SUBMISSION_MISSING: Counter = register_counter!(Opts::new(
+        "fuzzysearch_watcher_submission_missing_total",
+        "Number of submissions that were missing"
+    )
+    .const_label("site", "furaffinity"))
+    .unwrap_or_log();
+    static ref USERS_ONLINE: IntGaugeVec = register_int_gauge_vec!(
+        Opts::new(
+            "fuzzysearch_watcher_users_online",
+            "Number of users online for each category"
+        )
+        .const_label("site", "furaffinity"),
         &["group"]
     )
     .unwrap_or_log();
@@ -150,12 +170,13 @@ impl futures_retry::ErrorHandler<furaffinity_rs::Error> for RetryHandler {
     }
 }
 
-#[tracing::instrument(skip(client, fa, faktory))]
+#[tracing::instrument(skip(client, fa, faktory, download_folder))]
 async fn process_submission(
     client: &Client,
     fa: &furaffinity_rs::FurAffinity,
     faktory: &FaktoryClient,
     id: i32,
+    download_folder: &Option<String>,
 ) {
     if has_submission(client, id).await {
         return;
@@ -175,6 +196,7 @@ async fn process_submission(
         Err(err) => {
             tracing::error!("Failed to load submission: {:?}", err);
             _timer.stop_and_discard();
+            SUBMISSION_MISSING.inc();
             insert_null_submission(client, id).await.unwrap_or_log();
             return;
         }
@@ -185,6 +207,7 @@ async fn process_submission(
         None => {
             tracing::warn!("Submission did not exist");
             _timer.stop_and_discard();
+            SUBMISSION_MISSING.inc();
             insert_null_submission(client, id).await.unwrap_or_log();
             return;
         }
@@ -203,6 +226,14 @@ async fn process_submission(
             sub
         }
     };
+
+    if let (Some(folder), Some(sha256), Some(bytes)) =
+        (download_folder, &sub.file_sha256, &sub.file)
+    {
+        if let Err(err) = fuzzysearch_common::download::write_bytes(folder, sha256, bytes).await {
+            tracing::error!("Could not download image: {:?}", err);
+        }
+    }
 
     _timer.stop_and_record();
 
@@ -233,6 +264,8 @@ async fn main() {
         std::env::var("FA_B").expect_or_log("Missing FA_B"),
     );
 
+    let download_folder = std::env::var("DOWNLOAD_FOLDER").ok();
+
     let user_agent = std::env::var("USER_AGENT").expect_or_log("Missing USER_AGENT");
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
@@ -262,10 +295,12 @@ async fn main() {
 
     loop {
         tracing::debug!("Fetching latest ID... ");
+        let duration = INDEX_DURATION.start_timer();
         let (latest_id, online) = fa
             .latest_id()
             .await
             .expect_or_log("Unable to get latest id");
+        duration.stop_and_record();
         tracing::info!(latest_id = latest_id, "Got latest ID");
 
         tracing::debug!(?online, "Got updated users online");
@@ -280,7 +315,7 @@ async fn main() {
             .set(online.other as i64);
 
         for id in ids_to_check(&client, latest_id).await {
-            process_submission(&client, &fa, &faktory, id).await;
+            process_submission(&client, &fa, &faktory, id, &download_folder).await;
         }
 
         tracing::info!("Completed fetch, waiting a minute before loading more");

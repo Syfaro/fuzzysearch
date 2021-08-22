@@ -1,8 +1,30 @@
+use prometheus::{register_counter, register_histogram, Counter, Histogram, HistogramOpts, Opts};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tracing_unwrap::{OptionExt, ResultExt};
 
 use fuzzysearch_common::faktory::FaktoryClient;
+
+lazy_static::lazy_static! {
+    static ref INDEX_DURATION: Histogram = register_histogram!(HistogramOpts::new(
+        "fuzzysearch_watcher_index_duration_seconds",
+        "Duration to load an index of submissions"
+    )
+    .const_label("site", "weasyl"))
+    .unwrap_or_log();
+    static ref SUBMISSION_DURATION: Histogram = register_histogram!(HistogramOpts::new(
+        "fuzzysearch_watcher_submission_duration_seconds",
+        "Duration to load an index of submissions"
+    )
+    .const_label("site", "weasyl"))
+    .unwrap_or_log();
+    static ref SUBMISSION_MISSING: Counter = register_counter!(Opts::new(
+        "fuzzysearch_watcher_submission_missing_total",
+        "Number of submissions that were missing"
+    )
+    .const_label("site", "weasyl"))
+    .unwrap_or_log();
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 struct WeasylMediaSubmission {
@@ -120,13 +142,14 @@ async fn load_submission(
     Ok((res, body))
 }
 
-#[tracing::instrument(skip(pool, client, faktory, body, sub), fields(id = sub.id))]
+#[tracing::instrument(skip(pool, client, faktory, body, sub, download_folder), fields(id = sub.id))]
 async fn process_submission(
     pool: &sqlx::Pool<sqlx::Postgres>,
     client: &reqwest::Client,
     faktory: &FaktoryClient,
     body: serde_json::Value,
     sub: WeasylSubmission,
+    download_folder: &Option<String>,
 ) -> anyhow::Result<()> {
     tracing::debug!("Processing submission");
 
@@ -135,7 +158,8 @@ async fn process_submission(
         .send()
         .await?
         .bytes()
-        .await?;
+        .await?
+        .to_vec();
 
     let num = if let Ok(image) = image::load_from_memory(&data) {
         let hasher = fuzzysearch_common::get_hasher();
@@ -153,6 +177,12 @@ async fn process_submission(
     let mut hasher = Sha256::new();
     hasher.update(&data);
     let result: [u8; 32] = hasher.finalize().into();
+
+    if let Some(folder) = download_folder {
+        if let Err(err) = fuzzysearch_common::download::write_bytes(folder, &result, &data).await {
+            tracing::error!("Could not download image: {:?}", err);
+        }
+    }
 
     sqlx::query!(
         "INSERT INTO weasyl (id, hash, sha256, file_size, data) VALUES ($1, $2, $3, $4, $5)",
@@ -202,6 +232,7 @@ async fn main() {
     fuzzysearch_common::trace::serve_metrics().await;
 
     let api_key = std::env::var("WEASYL_APIKEY").unwrap_or_log();
+    let download_folder = std::env::var("DOWNLOAD_FOLDER").ok();
 
     let pool = sqlx::postgres::PgPoolOptions::new()
         .max_connections(2)
@@ -224,7 +255,9 @@ async fn main() {
             .id
             .unwrap_or_default();
 
+        let duration = INDEX_DURATION.start_timer();
         let max = load_frontpage(&client, &api_key).await.unwrap_or_log();
+        duration.stop_and_record();
 
         tracing::info!(min, max, "Calculated range of submissions to check");
 
@@ -237,11 +270,22 @@ async fn main() {
                 continue;
             }
 
+            let duration = SUBMISSION_DURATION.start_timer();
+
             match load_submission(&client, &api_key, id).await.unwrap_or_log() {
-                (Some(sub), json) => process_submission(&pool, &client, &faktory, json, sub)
-                    .await
-                    .unwrap_or_log(),
-                (None, body) => insert_null(&pool, body, id).await.unwrap_or_log(),
+                (Some(sub), json) => {
+                    process_submission(&pool, &client, &faktory, json, sub, &download_folder)
+                        .await
+                        .unwrap_or_log();
+
+                    duration.stop_and_record();
+                }
+                (None, body) => {
+                    insert_null(&pool, body, id).await.unwrap_or_log();
+
+                    SUBMISSION_MISSING.inc();
+                    duration.stop_and_discard();
+                }
             }
         }
 

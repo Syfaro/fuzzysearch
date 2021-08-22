@@ -1,6 +1,8 @@
 use anyhow::Context;
 use lazy_static::lazy_static;
-use prometheus::{register_histogram, register_int_gauge, Histogram, IntGauge};
+use prometheus::{
+    register_histogram, register_int_gauge, Histogram, HistogramOpts, IntGauge, Opts,
+};
 use sqlx::Connection;
 use tracing_unwrap::ResultExt;
 
@@ -9,20 +11,23 @@ use fuzzysearch_common::faktory::FaktoryClient;
 static USER_AGENT: &str = "e621-watcher / FuzzySearch Ingester / Syfaro <syfaro@huefox.com>";
 
 lazy_static! {
-    static ref SUBMISSION_BACKLOG: IntGauge = register_int_gauge!(
-        "fuzzysearch_watcher_e621_submission_backlog",
+    static ref SUBMISSION_BACKLOG: IntGauge = register_int_gauge!(Opts::new(
+        "fuzzysearch_watcher_submission_backlog",
         "Number of submissions behind the latest ID"
     )
+    .const_label("site", "e621"))
     .unwrap_or_log();
-    static ref INDEX_DURATION: Histogram = register_histogram!(
-        "fuzzysearch_watcher_e621_index_duration",
+    static ref INDEX_DURATION: Histogram = register_histogram!(HistogramOpts::new(
+        "fuzzysearch_watcher_index_duration_seconds",
         "Duration to load an index of submissions"
     )
+    .const_label("site", "e621"))
     .unwrap_or_log();
-    static ref SUBMISSION_DURATION: Histogram = register_histogram!(
-        "fuzzysearch_watcher_e621_submission_duration",
-        "Duration to ingest a submission"
+    static ref SUBMISSION_DURATION: Histogram = register_histogram!(HistogramOpts::new(
+        "fuzzysearch_watcher_submission_duration_seconds",
+        "Duration to load an index of submissions"
     )
+    .const_label("site", "e621"))
     .unwrap_or_log();
 }
 
@@ -36,6 +41,8 @@ async fn main() -> anyhow::Result<()> {
     let login = std::env::var("E621_LOGIN").expect_or_log("Missing E621_LOGIN");
     let api_key = std::env::var("E621_API_KEY").expect_or_log("Missing E621_API_KEY");
     let auth = (login, Some(api_key));
+
+    let download_folder = std::env::var("DOWNLOAD_FOLDER").ok();
 
     let client = reqwest::ClientBuilder::default()
         .user_agent(USER_AGENT)
@@ -106,7 +113,7 @@ async fn main() -> anyhow::Result<()> {
 
         for post in posts {
             let _hist = SUBMISSION_DURATION.start_timer();
-            insert_submission(&mut tx, &faktory, &client, post).await?;
+            insert_submission(&mut tx, &faktory, &client, post, &download_folder).await?;
             drop(_hist);
 
             SUBMISSION_BACKLOG.sub(1);
@@ -216,14 +223,20 @@ async fn load_page(
     Ok(body)
 }
 
-type ImageData = (Option<i64>, Option<String>, Option<Vec<u8>>);
+struct ImageData {
+    hash: Option<i64>,
+    hash_error: Option<String>,
+    sha256: Option<Vec<u8>>,
+    bytes: Option<Vec<u8>>,
+}
 
-#[tracing::instrument(err, skip(conn, faktory, client, post), fields(id))]
+#[tracing::instrument(err, skip(conn, faktory, client, post, download_folder), fields(id))]
 async fn insert_submission(
     conn: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     faktory: &FaktoryClient,
     client: &reqwest::Client,
     post: &serde_json::Value,
+    download_folder: &Option<String>,
 ) -> anyhow::Result<()> {
     let id = post
         .get("id")
@@ -236,15 +249,36 @@ async fn insert_submission(
 
     tracing::trace!(?post, "Evaluating post");
 
-    let (hash, hash_error, sha256): ImageData = if let Some((url, ext)) = get_post_url_ext(post) {
-        let (hash, hash_error, sha256) =
-            if url != "/images/deleted-preview.png" && (ext == "jpg" || ext == "png") {
-                load_image(client, url).await?
-            } else {
-                tracing::debug!("Ignoring post as it is deleted or not a supported image format");
+    let ImageData {
+        hash,
+        hash_error,
+        sha256,
+        ..
+    } = if let Some((url, ext)) = get_post_url_ext(post) {
+        let ImageData {
+            hash,
+            hash_error,
+            sha256,
+            bytes,
+        } = if url != "/images/deleted-preview.png" && (ext == "jpg" || ext == "png") {
+            load_image(client, url).await?
+        } else {
+            tracing::debug!("Ignoring post as it is deleted or not a supported image format");
 
-                (None, None, None)
-            };
+            ImageData {
+                hash: None,
+                hash_error: None,
+                sha256: None,
+                bytes: None,
+            }
+        };
+
+        if let (Some(folder), Some(sha256), Some(bytes)) = (download_folder, &sha256, &bytes) {
+            if let Err(err) = fuzzysearch_common::download::write_bytes(folder, sha256, bytes).await
+            {
+                tracing::error!("Could not download file: {:?}", err);
+            }
+        }
 
         let artist = post
             .as_object()
@@ -271,11 +305,21 @@ async fn insert_submission(
             })
             .await?;
 
-        (hash, hash_error, sha256)
+        ImageData {
+            hash,
+            hash_error,
+            sha256,
+            bytes,
+        }
     } else {
         tracing::warn!("Post had missing URL or extension");
 
-        (None, None, None)
+        ImageData {
+            hash: None,
+            hash_error: None,
+            sha256: None,
+            bytes: None,
+        }
     };
 
     sqlx::query!(
@@ -315,7 +359,7 @@ async fn load_image(client: &reqwest::Client, url: &str) -> anyhow::Result<Image
     use sha2::{Digest, Sha256};
     use std::convert::TryInto;
 
-    let bytes = client.get(url).send().await?.bytes().await?;
+    let bytes = client.get(url).send().await?.bytes().await?.to_vec();
 
     tracing::trace!(len = bytes.len(), "Got submission image bytes");
 
@@ -330,7 +374,12 @@ async fn load_image(client: &reqwest::Client, url: &str) -> anyhow::Result<Image
         Ok(img) => img,
         Err(err) => {
             tracing::error!(?err, "Unable to open image");
-            return Ok((None, Some(err.to_string()), Some(result)));
+            return Ok(ImageData {
+                hash: None,
+                hash_error: Some(err.to_string()),
+                sha256: Some(result),
+                bytes: Some(bytes),
+            });
         }
     };
 
@@ -342,5 +391,10 @@ async fn load_image(client: &reqwest::Client, url: &str) -> anyhow::Result<Image
 
     tracing::trace!(?hash, "Calculated image hash");
 
-    Ok((Some(hash), None, Some(result)))
+    Ok(ImageData {
+        hash: Some(hash),
+        hash_error: None,
+        sha256: Some(result),
+        bytes: Some(bytes),
+    })
 }
