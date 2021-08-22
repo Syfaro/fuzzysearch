@@ -120,7 +120,7 @@ async fn load_submission(
     Ok((res, body))
 }
 
-#[tracing::instrument(skip(pool, client, faktory, body, sub), fields(id = sub.id))]
+#[tracing::instrument(skip(pool, client, faktory, body, sub, download_folder), fields(id = sub.id))]
 async fn process_submission(
     pool: &sqlx::Pool<sqlx::Postgres>,
     client: &reqwest::Client,
