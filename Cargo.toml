@@ -9,6 +9,8 @@ members = [
     "fuzzysearch-ingest-e621",
     "fuzzysearch-ingest-furaffinity",
     "fuzzysearch-ingest-weasyl",
+
+    "fuzzysearch-refresh",
 ]
 
 [profile.dev.package."*"]

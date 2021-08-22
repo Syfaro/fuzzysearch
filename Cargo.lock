@@ -927,7 +927,7 @@ checksum = "fed34cd105917e91daa4da6b3728c47b068749d6a62c59811f06ed2ac71d9da7"
 [[package]]
 name = "furaffinity-rs"
 version = "0.1.0"
-source = "git+https://github.com/Syfaro/furaffinity-rs?branch=main#dffa06f1bf803e3a327e5b0d757f20228c68f63d"
+source = "git+https://github.com/Syfaro/furaffinity-rs#dffa06f1bf803e3a327e5b0d757f20228c68f63d"
 dependencies = [
  "chrono",
  "image",
@@ -1205,6 +1205,25 @@ dependencies = [
  "sha2",
  "sqlx",
  "tokio",
+ "tracing",
+ "tracing-unwrap",
+]
+
+[[package]]
+name = "fuzzysearch-refresh"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "faktory",
+ "furaffinity-rs",
+ "futures",
+ "fuzzysearch-common",
+ "reqwest",
+ "sqlx",
+ "thiserror",
+ "tokio",
+ "tokio-stream",
  "tracing",
  "tracing-unwrap",
 ]
@@ -2958,6 +2977,7 @@ dependencies = [
  "bitflags",
  "byteorder",
  "bytes",
+ "chrono",
  "crc",
  "crossbeam-channel",
  "crossbeam-queue",
