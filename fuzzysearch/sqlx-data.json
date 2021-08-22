@@ -50,12 +50,12 @@
         {
           "ordinal": 4,
           "name": "name",
-          "type_info": "Varchar"
+          "type_info": "Text"
         },
         {
           "ordinal": 5,
           "name": "owner_email",
-          "type_info": "Varchar"
+          "type_info": "Text"
         }
       ],
       "parameters": {
@@ -167,24 +167,6 @@
         "Left": [
           "Text"
         ]
-      },
-      "nullable": [
-        null
-      ]
-    }
-  },
-  "d6a5ed9266d7cf6f08df5e0160c59843a15ef5ef3ccac2e5ccfe2251a50bd0dc": {
-    "query": "SELECT hash_int hash FROM submission WHERE hash_int IS NOT NULL\n        UNION ALL\n        SELECT hash FROM e621 WHERE hash IS NOT NULL\n        UNION ALL\n        SELECT hash FROM tweet_media WHERE hash IS NOT NULL\n        UNION ALL\n        SELECT hash FROM weasyl WHERE hash IS NOT NULL",
-    "describe": {
-      "columns": [
-        {
-          "ordinal": 0,
-          "name": "hash",
-          "type_info": "Int8"
-        }
-      ],
-      "parameters": {
-        "Left": []
       },
       "nullable": [
         null

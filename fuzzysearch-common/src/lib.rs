@@ -7,6 +7,7 @@ pub mod video;
 #[cfg(feature = "trace")]
 pub mod trace;
 
+#[cfg(feature = "download")]
 pub mod download;
 
 /// Create an instance of img_hash with project defaults.
