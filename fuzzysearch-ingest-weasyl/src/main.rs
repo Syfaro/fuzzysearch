@@ -1,8 +1,30 @@
+use prometheus::{register_counter, register_histogram, Counter, Histogram, HistogramOpts, Opts};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tracing_unwrap::{OptionExt, ResultExt};
 
 use fuzzysearch_common::faktory::FaktoryClient;
+
+lazy_static::lazy_static! {
+    static ref INDEX_DURATION: Histogram = register_histogram!(HistogramOpts::new(
+        "fuzzysearch_watcher_index_duration_seconds",
+        "Duration to load an index of submissions"
+    )
+    .const_label("site", "weasyl"))
+    .unwrap_or_log();
+    static ref SUBMISSION_DURATION: Histogram = register_histogram!(HistogramOpts::new(
+        "fuzzysearch_watcher_submission_duration_seconds",
+        "Duration to load an index of submissions"
+    )
+    .const_label("site", "weasyl"))
+    .unwrap_or_log();
+    static ref SUBMISSION_MISSING: Counter = register_counter!(Opts::new(
+        "fuzzysearch_watcher_submission_missing_total",
+        "Number of submissions that were missing"
+    )
+    .const_label("site", "weasyl"))
+    .unwrap_or_log();
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 struct WeasylMediaSubmission {
@@ -233,7 +255,9 @@ async fn main() {
             .id
             .unwrap_or_default();
 
+        let duration = INDEX_DURATION.start_timer();
         let max = load_frontpage(&client, &api_key).await.unwrap_or_log();
+        duration.stop_and_record();
 
         tracing::info!(min, max, "Calculated range of submissions to check");
 
@@ -246,13 +270,22 @@ async fn main() {
                 continue;
             }
 
+            let duration = SUBMISSION_DURATION.start_timer();
+
             match load_submission(&client, &api_key, id).await.unwrap_or_log() {
                 (Some(sub), json) => {
                     process_submission(&pool, &client, &faktory, json, sub, &download_folder)
                         .await
-                        .unwrap_or_log()
+                        .unwrap_or_log();
+
+                    duration.stop_and_record();
                 }
-                (None, body) => insert_null(&pool, body, id).await.unwrap_or_log(),
+                (None, body) => {
+                    insert_null(&pool, body, id).await.unwrap_or_log();
+
+                    SUBMISSION_MISSING.inc();
+                    duration.stop_and_discard();
+                }
             }
         }
 

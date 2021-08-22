@@ -1,18 +1,38 @@
 use lazy_static::lazy_static;
+use prometheus::{
+    register_counter, register_histogram, register_int_gauge_vec, Counter, Histogram,
+    HistogramOpts, IntGaugeVec, Opts,
+};
 use tokio_postgres::Client;
 use tracing_unwrap::{OptionExt, ResultExt};
 
 use fuzzysearch_common::faktory::FaktoryClient;
 
 lazy_static! {
-    static ref SUBMISSION_DURATION: prometheus::Histogram = prometheus::register_histogram!(
-        "fuzzysearch_watcher_fa_processing_seconds",
-        "Duration to process a submission"
+    static ref INDEX_DURATION: Histogram = register_histogram!(HistogramOpts::new(
+        "fuzzysearch_watcher_index_duration_seconds",
+        "Duration to load an index of submissions"
     )
+    .const_label("site", "furaffinity"))
     .unwrap_or_log();
-    static ref USERS_ONLINE: prometheus::IntGaugeVec = prometheus::register_int_gauge_vec!(
-        "fuzzysearch_watcher_fa_users_online_count",
-        "Number of users online for each category",
+    static ref SUBMISSION_DURATION: Histogram = register_histogram!(HistogramOpts::new(
+        "fuzzysearch_watcher_submission_duration_seconds",
+        "Duration to load an index of submissions"
+    )
+    .const_label("site", "furaffinity"))
+    .unwrap_or_log();
+    static ref SUBMISSION_MISSING: Counter = register_counter!(Opts::new(
+        "fuzzysearch_watcher_submission_missing_total",
+        "Number of submissions that were missing"
+    )
+    .const_label("site", "furaffinity"))
+    .unwrap_or_log();
+    static ref USERS_ONLINE: IntGaugeVec = register_int_gauge_vec!(
+        Opts::new(
+            "fuzzysearch_watcher_users_online",
+            "Number of users online for each category"
+        )
+        .const_label("site", "furaffinity"),
         &["group"]
     )
     .unwrap_or_log();
@@ -176,6 +196,7 @@ async fn process_submission(
         Err(err) => {
             tracing::error!("Failed to load submission: {:?}", err);
             _timer.stop_and_discard();
+            SUBMISSION_MISSING.inc();
             insert_null_submission(client, id).await.unwrap_or_log();
             return;
         }
@@ -186,6 +207,7 @@ async fn process_submission(
         None => {
             tracing::warn!("Submission did not exist");
             _timer.stop_and_discard();
+            SUBMISSION_MISSING.inc();
             insert_null_submission(client, id).await.unwrap_or_log();
             return;
         }
@@ -272,11 +294,13 @@ async fn main() {
     tracing::info!("Started");
 
     loop {
+        let duration = INDEX_DURATION.start_timer();
         tracing::debug!("Fetching latest ID... ");
         let latest_id = fa
             .latest_id()
             .await
             .expect_or_log("Unable to get latest id");
+        duration.stop_and_record();
         tracing::info!(latest_id = latest_id.0, "Got latest ID");
 
         let online = latest_id.1;

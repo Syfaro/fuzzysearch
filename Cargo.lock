@@ -1197,6 +1197,8 @@ dependencies = [
  "fuzzysearch-common",
  "image",
  "img_hash",
+ "lazy_static",
+ "prometheus",
  "reqwest",
  "serde",
  "serde_json",

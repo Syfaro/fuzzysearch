@@ -1,6 +1,8 @@
 use anyhow::Context;
 use lazy_static::lazy_static;
-use prometheus::{register_histogram, register_int_gauge, Histogram, IntGauge};
+use prometheus::{
+    register_histogram, register_int_gauge, Histogram, HistogramOpts, IntGauge, Opts,
+};
 use sqlx::Connection;
 use tracing_unwrap::ResultExt;
 
@@ -9,20 +11,23 @@ use fuzzysearch_common::faktory::FaktoryClient;
 static USER_AGENT: &str = "e621-watcher / FuzzySearch Ingester / Syfaro <syfaro@huefox.com>";
 
 lazy_static! {
-    static ref SUBMISSION_BACKLOG: IntGauge = register_int_gauge!(
-        "fuzzysearch_watcher_e621_submission_backlog",
+    static ref SUBMISSION_BACKLOG: IntGauge = register_int_gauge!(Opts::new(
+        "fuzzysearch_watcher_submission_backlog",
         "Number of submissions behind the latest ID"
     )
+    .const_label("site", "e621"))
     .unwrap_or_log();
-    static ref INDEX_DURATION: Histogram = register_histogram!(
-        "fuzzysearch_watcher_e621_index_duration",
+    static ref INDEX_DURATION: Histogram = register_histogram!(HistogramOpts::new(
+        "fuzzysearch_watcher_index_duration_seconds",
         "Duration to load an index of submissions"
     )
+    .const_label("site", "e621"))
     .unwrap_or_log();
-    static ref SUBMISSION_DURATION: Histogram = register_histogram!(
-        "fuzzysearch_watcher_e621_submission_duration",
-        "Duration to ingest a submission"
+    static ref SUBMISSION_DURATION: Histogram = register_histogram!(HistogramOpts::new(
+        "fuzzysearch_watcher_submission_duration_seconds",
+        "Duration to load an index of submissions"
     )
+    .const_label("site", "e621"))
     .unwrap_or_log();
 }
 
