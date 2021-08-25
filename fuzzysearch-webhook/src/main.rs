@@ -27,7 +27,7 @@ pub enum WebhookError {
 }
 
 fn main() {
-    fuzzysearch_common::trace::configure_tracing("fuzzysearch-webhook");
+    fuzzysearch_common::init_logger();
 
     tracing::info!("Starting...");
 
@@ -84,7 +84,7 @@ fn main() {
         let mut args = job.args().iter();
 
         let data = args.next().ok_or(WebhookError::MissingData)?.to_owned();
-        let value: fuzzysearch_common::types::WebHookData = serde_json::value::from_value(data)?;
+        let value: fuzzysearch_common::faktory::WebHookData = serde_json::value::from_value(data)?;
 
         let endpoint = args
             .next()

@@ -198,9 +198,9 @@ async fn process_submission(
     tracing::info!("Completed submission");
 
     faktory
-        .queue_webhook(fuzzysearch_common::types::WebHookData {
+        .queue_webhook(fuzzysearch_common::faktory::WebHookData {
             site: fuzzysearch_common::types::Site::Weasyl,
-            site_id: sub.id,
+            site_id: sub.id as i64,
             artist: sub.owner_login.clone(),
             file_url: sub.media.submission.first().unwrap_or_log().url.clone(),
             file_sha256: Some(result.to_vec()),

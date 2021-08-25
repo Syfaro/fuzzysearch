@@ -67,6 +67,7 @@ pub enum Site {
     FurAffinity,
     E621,
     Weasyl,
+    Twitter,
 }
 
 impl std::fmt::Display for Site {
@@ -75,79 +76,7 @@ impl std::fmt::Display for Site {
             Self::FurAffinity => write!(f, "FurAffinity"),
             Self::E621 => write!(f, "e621"),
             Self::Weasyl => write!(f, "Weasyl"),
+            Self::Twitter => write!(f, "Twitter"),
         }
-    }
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct WebHookData {
-    pub site: Site,
-    pub site_id: i32,
-    pub artist: String,
-    pub file_url: String,
-    #[serde(with = "b64_vec")]
-    pub file_sha256: Option<Vec<u8>>,
-    #[serde(with = "b64_u8")]
-    pub hash: Option<[u8; 8]>,
-}
-
-mod b64_vec {
-    use serde::Deserialize;
-
-    pub fn serialize<S>(bytes: &Option<Vec<u8>>, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        match bytes {
-            Some(bytes) => serializer.serialize_str(&base64::encode(bytes)),
-            None => serializer.serialize_none(),
-        }
-    }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<Vec<u8>>, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let val = <Option<String>>::deserialize(deserializer)?
-            .map(base64::decode)
-            .transpose()
-            .map_err(serde::de::Error::custom)?;
-
-        Ok(val)
-    }
-}
-
-mod b64_u8 {
-    use std::convert::TryInto;
-
-    use serde::Deserialize;
-
-    pub fn serialize<S, const N: usize>(
-        bytes: &Option<[u8; N]>,
-        serializer: S,
-    ) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        match bytes {
-            Some(bytes) => serializer.serialize_str(&base64::encode(bytes)),
-            None => serializer.serialize_none(),
-        }
-    }
-
-    pub fn deserialize<'de, D, const N: usize>(deserializer: D) -> Result<Option<[u8; N]>, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let val = <Option<String>>::deserialize(deserializer)?
-            .map(base64::decode)
-            .transpose()
-            .map_err(serde::de::Error::custom)?
-            .map(|bytes| bytes.try_into())
-            .transpose()
-            .map_err(|_err| "value did not have correct number of bytes")
-            .map_err(serde::de::Error::custom)?;
-
-        Ok(val)
     }
 }

@@ -295,9 +295,9 @@ async fn insert_submission(
             .unwrap_or_default();
 
         faktory
-            .queue_webhook(fuzzysearch_common::types::WebHookData {
+            .queue_webhook(fuzzysearch_common::faktory::WebHookData {
                 site: fuzzysearch_common::types::Site::E621,
-                site_id: id,
+                site_id: id as i64,
                 artist,
                 file_url: url.to_owned(),
                 file_sha256: sha256.clone(),

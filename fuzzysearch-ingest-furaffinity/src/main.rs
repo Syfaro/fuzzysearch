@@ -238,9 +238,9 @@ async fn process_submission(
     _timer.stop_and_record();
 
     if let Err(err) = faktory
-        .queue_webhook(fuzzysearch_common::types::WebHookData {
+        .queue_webhook(fuzzysearch_common::faktory::WebHookData {
             site: fuzzysearch_common::types::Site::FurAffinity,
-            site_id: sub.id,
+            site_id: sub.id as i64,
             artist: sub.artist.clone(),
             file_url: sub.content.url().clone(),
             file_sha256: sub.file_sha256.clone(),
