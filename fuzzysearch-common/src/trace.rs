@@ -31,7 +31,7 @@ pub fn configure_tracing(service_name: &'static str) {
     if matches!(std::env::var("LOG_FMT").as_deref(), Ok("json")) {
         let subscriber = tracing_subscriber::fmt::layer()
             .json()
-            .with_timer(tracing_subscriber::fmt::time::ChronoUtc::rfc3339())
+            .with_timer(tracing_subscriber::fmt::time::UtcTime::rfc_3339())
             .with_target(true);
         let subscriber = tracing_subscriber::Registry::default()
             .with(env_filter)

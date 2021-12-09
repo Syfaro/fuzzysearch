@@ -99,13 +99,7 @@ async fn post_image(
     while let Ok(Some(field)) = form.try_next().await {
         tracing::debug!("got multipart field: {:?}", field);
 
-        let content_type = if let Some(content_disposition) = field.content_disposition() {
-            content_disposition
-        } else {
-            continue;
-        };
-
-        if !matches!(content_type.get_name(), Some("image")) {
+        if !matches!(field.content_disposition().get_name(), Some("image")) {
             continue;
         }
 

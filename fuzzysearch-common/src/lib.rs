@@ -27,7 +27,7 @@ pub fn init_logger() {
         tracing_subscriber::fmt::Subscriber::builder()
             .json()
             .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-            .with_timer(tracing_subscriber::fmt::time::ChronoUtc::rfc3339())
+            .with_timer(tracing_subscriber::fmt::time::UtcTime::rfc_3339())
             .init();
     } else {
         tracing_subscriber::fmt::init();

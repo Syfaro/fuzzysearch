@@ -17,7 +17,7 @@ sqlx = { version = "0.5", features = ["runtime-tokio-native-tls", "postgres", "m
 
 image = "0.23"
 img_hash = "3"
-sha2 = "0.9"
+sha2 = "0.10"
 
 tracing = "0.1"
 tracing-unwrap = "0.9"
@@ -25,6 +25,6 @@ tracing-unwrap = "0.9"
 anyhow = "1"
 
 lazy_static = "1"
-prometheus = { version = "0.12", features = ["process"] }
+prometheus = { version = "0.13", features = ["process"] }
 
 fuzzysearch-common = { path = "../fuzzysearch-common", features = ["queue"] }
