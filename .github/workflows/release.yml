@@ -1,0 +1,187 @@
+name: Release
+
+on:
+  push:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  release:
+    runs-on: ubuntu-20.04
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Cache target
+        uses: actions/cache@v2
+        with:
+          path: |
+            target/
+          key: ${{ runner.os }}-release-${{ hashFiles('Cargo.lock') }}
+
+      - name: Get stable toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y libssl-dev pkg-config libavcodec-dev libavformat-dev libavutil-dev libavdevice-dev clang llvm python3 python3-pip
+
+      - name: Build binaries
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release
+
+      - name: Move binaries
+        run: |
+          mv target/release/fuzzysearch fuzzysearch/fuzzysearch
+          mv target/release/fuzzysearch-webhook fuzzysearch-webhook/fuzzysearch-webhook
+          mv target/release/fuzzysearch-refresh fuzzysearch-refresh/fuzzysearch-refresh
+          mv target/release/fuzzysearch-hash-input fuzzysearch-hash-input/fuzzysearch-hash-input
+          mv target/release/fuzzysearch-ingest-e621 fuzzysearch-ingest-e621/fuzzysearch-ingest-e621
+          mv target/release/fuzzysearch-ingest-furaffinity fuzzysearch-ingest-furaffinity/fuzzysearch-ingest-furaffinity
+          mv target/release/fuzzysearch-ingest-weasyl fuzzysearch-ingest-weasyl/fuzzysearch-ingest-weasyl
+
+      - name: Upload binaries
+        uses: actions/upload-artifact@v2
+        with:
+          name: binaries
+          path: |
+            fuzzysearch/fuzzysearch
+            fuzzysearch-webhook/fuzzysearch-webhook
+            fuzzysearch-refresh/fuzzysearch-refresh
+            fuzzysearch-hash-input/fuzzysearch-hash-input
+            fuzzysearch-ingest-e621/fuzzysearch-ingest-e621
+            fuzzysearch-ingest-furaffinity/fuzzysearch-ingest-furaffinity
+            fuzzysearch-ingest-weasyl/fuzzysearch-ingest-weasyl
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v1
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract FuzzySearch metadata for Docker
+        id: meta-fuzzysearch
+        uses: docker/metadata-action@v3
+        with:
+          images: ghcr.io/syfaro/fuzzysearch
+
+      - name: Extract FuzzySearch Webhook metadata for Docker
+        id: meta-fuzzysearch-webhook
+        uses: docker/metadata-action@v3
+        with:
+          images: ghcr.io/syfaro/fuzzysearch-webhook
+
+      - name: Extract FuzzySearch refresh metadata for Docker
+        id: meta-fuzzysearch-refresh
+        uses: docker/metadata-action@v3
+        with:
+          images: ghcr.io/syfaro/fuzzysearch-refresh
+
+      - name: Extract FuzzySearch hash input metadata for Docker
+        id: meta-fuzzysearch-hash-input
+        uses: docker/metadata-action@v3
+        with:
+          images: ghcr.io/syfaro/fuzzysearch-hash-input
+
+      - name: Extract FuzzySearch ingest e621 metadata for Docker
+        id: meta-fuzzysearch-ingest-e621
+        uses: docker/metadata-action@v3
+        with:
+          images: ghcr.io/syfaro/fuzzysearch-ingest-e621
+
+      - name: Extract FuzzySearch ingest FurAffinity metadata for Docker
+        id: meta-fuzzysearch-ingest-furaffinity
+        uses: docker/metadata-action@v3
+        with:
+          images: ghcr.io/syfaro/fuzzysearch-ingest-furaffinity
+
+      - name: Extract FuzzySearch ingest Weasyl metadata for Docker
+        id: meta-fuzzysearch-ingest-weasyl
+        uses: docker/metadata-action@v3
+        with:
+          images: ghcr.io/syfaro/fuzzysearch-ingest-weasyl
+
+      - name: Build and push FuzzySearch Docker image
+        uses: docker/build-push-action@v2
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta-fuzzysearch.outputs.tags }}
+          labels: ${{ steps.meta-fuzzysearch.outputs.labels }}
+          file: fuzzysearch/Dockerfile
+
+      - name: Build and push FuzzySearch Webhook Docker image
+        uses: docker/build-push-action@v2
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta-fuzzysearch-webhook.outputs.tags }}
+          labels: ${{ steps.meta-fuzzysearch-webhook.outputs.labels }}
+          file: fuzzysearch-webhook/Dockerfile
+
+      - name: Build and push FuzzySearch hash input Docker image
+        uses: docker/build-push-action@v2
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta-fuzzysearch-hash-input.outputs.tags }}
+          labels: ${{ steps.meta-fuzzysearch-hash-input.outputs.labels }}
+          file: fuzzysearch-hash-input/Dockerfile
+
+      - name: Build and push FuzzySearch refresh Docker image
+        uses: docker/build-push-action@v2
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta-fuzzysearch-refresh.outputs.tags }}
+          labels: ${{ steps.meta-fuzzysearch-refresh.outputs.labels }}
+          file: fuzzysearch-refresh/Dockerfile
+
+      - name: Build and push FuzzySearch ingest e621 Docker image
+        uses: docker/build-push-action@v2
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta-fuzzysearch-ingest-e621.outputs.tags }}
+          labels: ${{ steps.meta-fuzzysearch-ingest-e621.outputs.labels }}
+          file: fuzzysearch-ingest-e621/Dockerfile
+
+      - name: Build and push FuzzySearch ingest FurAffinity Docker image
+        uses: docker/build-push-action@v2
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta-fuzzysearch-ingest-furaffinity.outputs.tags }}
+          labels: ${{ steps.meta-fuzzysearch-ingest-furaffinity.outputs.labels }}
+          file: fuzzysearch-ingest-furaffinity/Dockerfile
+
+      - name: Build and push FuzzySearch ingest Weasyl Docker image
+        uses: docker/build-push-action@v2
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta-fuzzysearch-ingest-weasyl.outputs.tags }}
+          labels: ${{ steps.meta-fuzzysearch-ingest-weasyl.outputs.labels }}
+          file: fuzzysearch-ingest-weasyl/Dockerfile
+
+  sourcegraph:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+      - name: Generate LSIF data
+        uses: sourcegraph/lsif-rust-action@main
+      - name: Upload LSIF data
+        uses: sourcegraph/lsif-upload-action@master
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
