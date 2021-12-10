@@ -35,7 +35,6 @@ hyper = "0.14"
 
 sqlx = { version = "0.5", features = ["runtime-tokio-native-tls", "postgres", "macros", "json", "offline"] }
 
-ffmpeg-next = "4"
 image = "0.23"
 img_hash = "3"
 hamming = "0.1"

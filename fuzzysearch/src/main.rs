@@ -21,8 +21,6 @@ async fn main() {
     fuzzysearch_common::trace::configure_tracing("fuzzysearch");
     fuzzysearch_common::trace::serve_metrics().await;
 
-    ffmpeg_next::init().expect("Unable to initialize ffmpeg");
-
     let s = std::env::var("DATABASE_URL").expect("Missing DATABASE_URL");
 
     let db_pool = sqlx::PgPool::connect(&s)

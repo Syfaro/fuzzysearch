@@ -2,6 +2,8 @@ name: Release
 
 on:
   push:
+    branches:
+      - main
 
 env:
   CARGO_TERM_COLOR: always
@@ -31,7 +33,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y libssl-dev pkg-config libavcodec-dev libavformat-dev libavutil-dev libavdevice-dev clang llvm python3 python3-pip
+          sudo apt-get install -y libssl-dev pkg-config clang llvm python3 python3-pip
 
       - name: Build binaries
         uses: actions-rs/cargo@v1

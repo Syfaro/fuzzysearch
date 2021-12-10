@@ -7,7 +7,6 @@ edition = "2018"
 [features]
 default = ["trace", "download"]
 
-video = ["ffmpeg-next", "tempfile"]
 queue = ["faktory", "tokio", "serde_json"]
 trace = ["opentelemetry", "opentelemetry-jaeger", "tracing-opentelemetry", "opentelemetry-http", "hyper", "prometheus", "tokio", "reqwest"]
 download = ["tokio"]
@@ -29,7 +28,6 @@ image = "0.23"
 img_hash = "3"
 hex = "0.4"
 
-ffmpeg-next = { version = "4", optional = true }
 tempfile = { version = "3", optional = true }
 
 faktory = { version = "0.11", optional = true }
