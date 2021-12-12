@@ -1,16 +1,20 @@
+use std::collections::HashMap;
 use std::net::TcpStream;
 use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
 
 /// A wrapper around Faktory, providing an async interface to common operations.
+#[derive(Clone)]
 pub struct FaktoryClient {
     faktory: Arc<Mutex<faktory::Producer<TcpStream>>>,
 }
 
 impl FaktoryClient {
     /// Connect to a Faktory instance.
-    pub async fn connect(host: String) -> anyhow::Result<Self> {
+    pub async fn connect<H: Into<String>>(host: H) -> anyhow::Result<Self> {
+        let host = host.into();
+
         let producer = tokio::task::spawn_blocking(move || {
             faktory::Producer::connect(Some(&host))
                 .map_err(|err| anyhow::format_err!("Unable to connect to Faktory: {:?}", err))
@@ -24,10 +28,11 @@ impl FaktoryClient {
 
     /// Enqueue a new job.
     #[tracing::instrument(err, skip(self))]
-    async fn enqueue(&self, job: faktory::Job) -> anyhow::Result<()> {
+    pub async fn enqueue(&self, mut job: faktory::Job) -> anyhow::Result<()> {
         let faktory = self.faktory.clone();
 
-        tracing::trace!("Attempting to enqueue webhook data");
+        tracing::trace!("Attempting to enqueue job");
+        job.custom = get_faktory_custom();
 
         tokio::task::spawn_blocking(move || {
             let mut faktory = faktory.lock().unwrap();
@@ -37,7 +42,7 @@ impl FaktoryClient {
         })
         .await??;
 
-        tracing::debug!("Enqueued webhook data");
+        tracing::debug!("Enqueued job");
 
         Ok(())
     }
@@ -51,6 +56,25 @@ impl FaktoryClient {
         job.reserve_for = Some(30);
         self.enqueue(job).await
     }
+}
+
+fn get_faktory_custom() -> HashMap<String, serde_json::Value> {
+    use opentelemetry::propagation::TextMapPropagator;
+    use tracing_opentelemetry::OpenTelemetrySpanExt;
+
+    let context = tracing::Span::current().context();
+
+    let mut extra: HashMap<String, String> = Default::default();
+    let propagator = opentelemetry::sdk::propagation::TraceContextPropagator::new();
+    propagator.inject_context(&context, &mut extra);
+
+    extra
+        .into_iter()
+        .filter_map(|(key, value)| match serde_json::to_value(value) {
+            Ok(val) => Some((key, val)),
+            _ => None,
+        })
+        .collect()
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

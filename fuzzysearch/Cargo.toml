@@ -33,7 +33,7 @@ warp = "0.3"
 reqwest = { version = "0.11", features = ["multipart"] }
 hyper = "0.14"
 
-sqlx = { version = "0.5", features = ["runtime-tokio-native-tls", "postgres", "macros", "json", "offline"] }
+sqlx = { version = "0.5", features = ["runtime-tokio-native-tls", "postgres", "macros", "json", "offline", "chrono"] }
 
 image = "0.23"
 img_hash = "3"

@@ -270,6 +270,7 @@ pub async fn search_file(
                     submission.filename,
                     submission.file_id,
                     submission.rating,
+                    submission.posted_at,
                     artist.name,
                     hashes.id hash_id
                 FROM
@@ -291,6 +292,7 @@ pub async fn search_file(
                     submission.filename,
                     submission.file_id,
                     submission.rating,
+                    submission.posted_at,
                     artist.name,
                     hashes.id hash_id
                 FROM
@@ -312,6 +314,7 @@ pub async fn search_file(
                     submission.filename,
                     submission.file_id,
                     submission.rating,
+                    submission.posted_at,
                     artist.name,
                     hashes.id hash_id
                 FROM
@@ -333,6 +336,7 @@ pub async fn search_file(
                     submission.filename,
                     submission.file_id,
                     submission.rating,
+                    submission.posted_at,
                     artist.name,
                     hashes.id hash_id
                 FROM
@@ -356,6 +360,7 @@ pub async fn search_file(
             site_id_str: row.get::<i32, _>("id").to_string(),
             url: row.get("url"),
             filename: row.get("filename"),
+            posted_at: row.get("posted_at"),
             artists: row
                 .get::<Option<String>, _>("name")
                 .map(|artist| vec![artist]),

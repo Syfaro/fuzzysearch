@@ -34,6 +34,7 @@ pub struct SearchResult {
     pub filename: String,
     pub artists: Option<Vec<String>>,
     pub rating: Option<Rating>,
+    pub posted_at: Option<chrono::DateTime<chrono::Utc>>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(flatten)]

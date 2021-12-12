@@ -73,7 +73,7 @@ pub async fn image_query(
 
     let timer = IMAGE_QUERY_DURATION.start_timer();
     let matches = sqlx::query!(
-        "WITH hashes AS (
+        r#"WITH hashes AS (
             SELECT * FROM jsonb_to_recordset($1::jsonb)
                 AS hashes(searched_hash bigint, found_hash bigint, distance bigint)
         )
@@ -87,6 +87,7 @@ pub async fn image_query(
             submission.file_id,
             null sources,
             submission.rating,
+            submission.posted_at,
             hashes.searched_hash,
             hashes.distance
         FROM hashes
@@ -104,6 +105,7 @@ pub async fn image_query(
             null file_id,
             ARRAY(SELECT jsonb_array_elements_text(e621.data->'sources')) sources,
             e621.data->>'rating' rating,
+            to_timestamp(data->>'created_at', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') posted_at,
             hashes.searched_hash,
             hashes.distance
         FROM hashes
@@ -120,6 +122,7 @@ pub async fn image_query(
             null file_id,
             null sources,
             weasyl.data->>'rating' rating,
+            to_timestamp(data->>'posted_at', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') posted_at,
             hashes.searched_hash,
             hashes.distance
         FROM hashes
@@ -139,12 +142,13 @@ pub async fn image_query(
                 WHEN (tweet.data->'possibly_sensitive')::boolean IS true THEN 'adult'
                 WHEN (tweet.data->'possibly_sensitive')::boolean IS false THEN 'general'
             END rating,
+            to_timestamp(tweet.data->>'created_at', 'DY Mon DD HH24:MI:SS +0000 YYYY') posted_at,
             hashes.searched_hash,
             hashes.distance
         FROM hashes
         JOIN tweet_media ON hashes.found_hash = tweet_media.hash
         JOIN tweet ON tweet_media.tweet_id = tweet.id
-        WHERE tweet_media.hash IN (SELECT hashes.found_hash)",
+        WHERE tweet_media.hash IN (SELECT hashes.found_hash)"#,
         serde_json::to_value(&found_hashes).unwrap()
     )
     .map(|row| {
@@ -168,6 +172,7 @@ pub async fn image_query(
             rating: row.rating.and_then(|rating| rating.parse().ok()),
             site_id_str: row.id.unwrap_or_default().to_string(),
             url: row.url.unwrap_or_default(),
+            posted_at: row.posted_at,
             hash: row.hash,
             distance: row
                 .distance

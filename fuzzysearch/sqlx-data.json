@@ -23,58 +23,8 @@
       ]
     }
   },
-  "659ee9ddc1c5ccd42ba9dc1617440544c30ece449ba3ba7f9d39f447b8af3cfe": {
-    "query": "SELECT\n            api_key.id,\n            api_key.name_limit,\n            api_key.image_limit,\n            api_key.hash_limit,\n            api_key.name,\n            account.email owner_email\n        FROM\n            api_key\n        JOIN account\n            ON account.id = api_key.user_id\n        WHERE\n            api_key.key = $1\n    ",
-    "describe": {
-      "columns": [
-        {
-          "ordinal": 0,
-          "name": "id",
-          "type_info": "Int4"
-        },
-        {
-          "ordinal": 1,
-          "name": "name_limit",
-          "type_info": "Int2"
-        },
-        {
-          "ordinal": 2,
-          "name": "image_limit",
-          "type_info": "Int2"
-        },
-        {
-          "ordinal": 3,
-          "name": "hash_limit",
-          "type_info": "Int2"
-        },
-        {
-          "ordinal": 4,
-          "name": "name",
-          "type_info": "Text"
-        },
-        {
-          "ordinal": 5,
-          "name": "owner_email",
-          "type_info": "Text"
-        }
-      ],
-      "parameters": {
-        "Left": [
-          "Text"
-        ]
-      },
-      "nullable": [
-        false,
-        false,
-        false,
-        false,
-        true,
-        false
-      ]
-    }
-  },
-  "68b890a7910000c2737f71aa8817015030095cde28ef61d51720217b5e2c0d11": {
-    "query": "WITH hashes AS (\n            SELECT * FROM jsonb_to_recordset($1::jsonb)\n                AS hashes(searched_hash bigint, found_hash bigint, distance bigint)\n        )\n        SELECT\n            'FurAffinity' site,\n            submission.id,\n            submission.hash_int hash,\n            submission.url,\n            submission.filename,\n            ARRAY(SELECT artist.name) artists,\n            submission.file_id,\n            null sources,\n            submission.rating,\n            hashes.searched_hash,\n            hashes.distance\n        FROM hashes\n        JOIN submission ON hashes.found_hash = submission.hash_int\n        JOIN artist ON submission.artist_id = artist.id\n        WHERE hash_int IN (SELECT hashes.found_hash)\n        UNION ALL\n        SELECT\n            'e621' site,\n            e621.id,\n            e621.hash,\n            e621.data->'file'->>'url' url,\n            (e621.data->'file'->>'md5') || '.' || (e621.data->'file'->>'ext') filename,\n            ARRAY(SELECT jsonb_array_elements_text(e621.data->'tags'->'artist')) artists,\n            null file_id,\n            ARRAY(SELECT jsonb_array_elements_text(e621.data->'sources')) sources,\n            e621.data->>'rating' rating,\n            hashes.searched_hash,\n            hashes.distance\n        FROM hashes\n        JOIN e621 ON hashes.found_hash = e621.hash\n        WHERE e621.hash IN (SELECT hashes.found_hash)\n        UNION ALL\n        SELECT\n            'Weasyl' site,\n            weasyl.id,\n            weasyl.hash,\n            weasyl.data->>'link' url,\n            null filename,\n            ARRAY(SELECT weasyl.data->>'owner_login') artists,\n            null file_id,\n            null sources,\n            weasyl.data->>'rating' rating,\n            hashes.searched_hash,\n            hashes.distance\n        FROM hashes\n        JOIN weasyl ON hashes.found_hash = weasyl.hash\n        WHERE weasyl.hash IN (SELECT hashes.found_hash)\n        UNION ALL\n        SELECT\n            'Twitter' site,\n            tweet.id,\n            tweet_media.hash,\n            tweet_media.url,\n            null filename,\n            ARRAY(SELECT tweet.data->'user'->>'screen_name') artists,\n            null file_id,\n            null sources,\n            CASE\n                WHEN (tweet.data->'possibly_sensitive')::boolean IS true THEN 'adult'\n                WHEN (tweet.data->'possibly_sensitive')::boolean IS false THEN 'general'\n            END rating,\n            hashes.searched_hash,\n            hashes.distance\n        FROM hashes\n        JOIN tweet_media ON hashes.found_hash = tweet_media.hash\n        JOIN tweet ON tweet_media.tweet_id = tweet.id\n        WHERE tweet_media.hash IN (SELECT hashes.found_hash)",
+  "607c1801f1ccc639f70d06b42c5a1d3cd89196bf22b115a895577f2c0cd8f746": {
+    "query": "WITH hashes AS (\n            SELECT * FROM jsonb_to_recordset($1::jsonb)\n                AS hashes(searched_hash bigint, found_hash bigint, distance bigint)\n        )\n        SELECT\n            'FurAffinity' site,\n            submission.id,\n            submission.hash_int hash,\n            submission.url,\n            submission.filename,\n            ARRAY(SELECT artist.name) artists,\n            submission.file_id,\n            null sources,\n            submission.rating,\n            submission.posted_at,\n            hashes.searched_hash,\n            hashes.distance\n        FROM hashes\n        JOIN submission ON hashes.found_hash = submission.hash_int\n        JOIN artist ON submission.artist_id = artist.id\n        WHERE hash_int IN (SELECT hashes.found_hash)\n        UNION ALL\n        SELECT\n            'e621' site,\n            e621.id,\n            e621.hash,\n            e621.data->'file'->>'url' url,\n            (e621.data->'file'->>'md5') || '.' || (e621.data->'file'->>'ext') filename,\n            ARRAY(SELECT jsonb_array_elements_text(e621.data->'tags'->'artist')) artists,\n            null file_id,\n            ARRAY(SELECT jsonb_array_elements_text(e621.data->'sources')) sources,\n            e621.data->>'rating' rating,\n            to_timestamp(data->>'created_at', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') posted_at,\n            hashes.searched_hash,\n            hashes.distance\n        FROM hashes\n        JOIN e621 ON hashes.found_hash = e621.hash\n        WHERE e621.hash IN (SELECT hashes.found_hash)\n        UNION ALL\n        SELECT\n            'Weasyl' site,\n            weasyl.id,\n            weasyl.hash,\n            weasyl.data->>'link' url,\n            null filename,\n            ARRAY(SELECT weasyl.data->>'owner_login') artists,\n            null file_id,\n            null sources,\n            weasyl.data->>'rating' rating,\n            to_timestamp(data->>'posted_at', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') posted_at,\n            hashes.searched_hash,\n            hashes.distance\n        FROM hashes\n        JOIN weasyl ON hashes.found_hash = weasyl.hash\n        WHERE weasyl.hash IN (SELECT hashes.found_hash)\n        UNION ALL\n        SELECT\n            'Twitter' site,\n            tweet.id,\n            tweet_media.hash,\n            tweet_media.url,\n            null filename,\n            ARRAY(SELECT tweet.data->'user'->>'screen_name') artists,\n            null file_id,\n            null sources,\n            CASE\n                WHEN (tweet.data->'possibly_sensitive')::boolean IS true THEN 'adult'\n                WHEN (tweet.data->'possibly_sensitive')::boolean IS false THEN 'general'\n            END rating,\n            to_timestamp(tweet.data->>'created_at', 'DY Mon DD HH24:MI:SS +0000 YYYY') posted_at,\n            hashes.searched_hash,\n            hashes.distance\n        FROM hashes\n        JOIN tweet_media ON hashes.found_hash = tweet_media.hash\n        JOIN tweet ON tweet_media.tweet_id = tweet.id\n        WHERE tweet_media.hash IN (SELECT hashes.found_hash)",
     "describe": {
       "columns": [
         {
@@ -124,11 +74,16 @@
         },
         {
           "ordinal": 9,
+          "name": "posted_at",
+          "type_info": "Timestamptz"
+        },
+        {
+          "ordinal": 10,
           "name": "searched_hash",
           "type_info": "Int8"
         },
         {
-          "ordinal": 10,
+          "ordinal": 11,
           "name": "distance",
           "type_info": "Int8"
         }
@@ -149,7 +104,58 @@
         null,
         null,
         null,
+        null,
         null
+      ]
+    }
+  },
+  "659ee9ddc1c5ccd42ba9dc1617440544c30ece449ba3ba7f9d39f447b8af3cfe": {
+    "query": "SELECT\n            api_key.id,\n            api_key.name_limit,\n            api_key.image_limit,\n            api_key.hash_limit,\n            api_key.name,\n            account.email owner_email\n        FROM\n            api_key\n        JOIN account\n            ON account.id = api_key.user_id\n        WHERE\n            api_key.key = $1\n    ",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int4"
+        },
+        {
+          "ordinal": 1,
+          "name": "name_limit",
+          "type_info": "Int2"
+        },
+        {
+          "ordinal": 2,
+          "name": "image_limit",
+          "type_info": "Int2"
+        },
+        {
+          "ordinal": 3,
+          "name": "hash_limit",
+          "type_info": "Int2"
+        },
+        {
+          "ordinal": 4,
+          "name": "name",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 5,
+          "name": "owner_email",
+          "type_info": "Text"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Text"
+        ]
+      },
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        true,
+        false
       ]
     }
   },

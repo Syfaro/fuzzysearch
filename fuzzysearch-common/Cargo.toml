@@ -27,6 +27,7 @@ base64 = "0.13"
 image = "0.23"
 img_hash = "3"
 hex = "0.4"
+chrono = { version = "0.4", features = ["serde"] }
 
 tempfile = { version = "3", optional = true }
 
