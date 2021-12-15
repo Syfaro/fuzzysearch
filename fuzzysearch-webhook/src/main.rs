@@ -42,6 +42,7 @@ fn main() {
         .unwrap_or_log();
 
     let mut faktory = faktory::ConsumerBuilder::default();
+    faktory.labels(vec!["fuzzysearch-webhook".to_string()]);
     faktory.workers(2);
 
     let producer = std::sync::Mutex::new(faktory::Producer::connect(None).unwrap());

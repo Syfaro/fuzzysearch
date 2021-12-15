@@ -32,7 +32,10 @@ impl FaktoryClient {
         let faktory = self.faktory.clone();
 
         tracing::trace!("Attempting to enqueue job");
-        job.custom = get_faktory_custom();
+        job.custom = get_faktory_custom()
+            .into_iter()
+            .chain(job.custom.into_iter())
+            .collect();
 
         tokio::task::spawn_blocking(move || {
             let mut faktory = faktory.lock().unwrap();

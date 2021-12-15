@@ -30,6 +30,7 @@ fn main() {
     let rt = Arc::new(tokio::runtime::Runtime::new().unwrap());
 
     let mut faktory = faktory::ConsumerBuilder::default();
+    faktory.labels(vec!["fuzzysearch-refresh".to_string()]);
     faktory.workers(2);
 
     let p = Arc::new(Mutex::new(faktory::Producer::connect(None).unwrap_or_log()));
