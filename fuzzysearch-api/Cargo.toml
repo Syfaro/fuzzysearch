@@ -10,6 +10,8 @@ tracing-subscriber = "0.3"
 tracing-futures = "0.2"
 tracing-log = "0.1"
 
+thiserror = "1"
+
 prometheus = { version = "0.13", features = ["process"] }
 lazy_static = "1"
 
@@ -19,7 +21,7 @@ tracing-opentelemetry = "0.16"
 opentelemetry-http = "0.5"
 
 tokio = { version = "1", features = ["full"] }
-tokio-stream = "0.1"
+tokio-util = "0.6"
 
 futures = "0.3"
 
@@ -29,8 +31,10 @@ bytes = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
-warp = "0.3"
-reqwest = { version = "0.11", features = ["multipart"] }
+poem = { version = "1", features = ["multipart", "opentelemetry", "prometheus"] }
+poem-openapi = { version = "1", features = ["chrono", "swagger-ui"] }
+
+reqwest = { version = "0.11", features = ["multipart", "stream"] }
 hyper = "0.14"
 
 sqlx = { version = "0.5", features = ["runtime-tokio-native-tls", "postgres", "macros", "json", "offline", "chrono"] }
