@@ -18,7 +18,7 @@ pub struct Endpoints {
 
 #[tokio::main]
 async fn main() {
-    fuzzysearch_common::trace::configure_tracing("fuzzysearch");
+    fuzzysearch_common::trace::configure_tracing("fuzzysearch-api");
     fuzzysearch_common::trace::serve_metrics().await;
 
     let s = std::env::var("DATABASE_URL").expect("Missing DATABASE_URL");
@@ -34,7 +34,7 @@ async fn main() {
 
     let bkapi = bkapi_client::BKApiClient::new(&endpoints.bkapi);
 
-    let log = warp::log("fuzzysearch");
+    let log = warp::log("fuzzysearch-api");
     let cors = warp::cors()
         .allow_any_origin()
         .allow_headers(vec!["x-api-key"])

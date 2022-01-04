@@ -26,7 +26,9 @@ enum ImageResponse {
 }
 
 impl Responder for ImageResponse {
-    fn respond_to(self, _req: &HttpRequest) -> HttpResponse {
+    type Body = actix_web::body::BoxBody;
+
+    fn respond_to(self, _req: &HttpRequest) -> HttpResponse<Self::Body> {
         match self {
             ImageResponse::Hash(hash) => HttpResponse::Ok()
                 .content_type("text/plain")

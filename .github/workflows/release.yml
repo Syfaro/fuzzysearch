@@ -43,7 +43,7 @@ jobs:
 
       - name: Move binaries
         run: |
-          mv target/release/fuzzysearch fuzzysearch/fuzzysearch
+          mv target/release/fuzzysearch-api fuzzysearch-api/fuzzysearch-api
           mv target/release/fuzzysearch-webhook fuzzysearch-webhook/fuzzysearch-webhook
           mv target/release/fuzzysearch-refresh fuzzysearch-refresh/fuzzysearch-refresh
           mv target/release/fuzzysearch-hash-input fuzzysearch-hash-input/fuzzysearch-hash-input
@@ -56,7 +56,7 @@ jobs:
         with:
           name: binaries
           path: |
-            fuzzysearch/fuzzysearch
+            fuzzysearch-api/fuzzysearch-api
             fuzzysearch-webhook/fuzzysearch-webhook
             fuzzysearch-refresh/fuzzysearch-refresh
             fuzzysearch-hash-input/fuzzysearch-hash-input
@@ -71,11 +71,11 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract FuzzySearch metadata for Docker
-        id: meta-fuzzysearch
+      - name: Extract FuzzySearch API metadata for Docker
+        id: meta-fuzzysearch-api
         uses: docker/metadata-action@v3
         with:
-          images: ghcr.io/syfaro/fuzzysearch
+          images: ghcr.io/syfaro/fuzzysearch-api
 
       - name: Extract FuzzySearch Webhook metadata for Docker
         id: meta-fuzzysearch-webhook
@@ -113,14 +113,14 @@ jobs:
         with:
           images: ghcr.io/syfaro/fuzzysearch-ingest-weasyl
 
-      - name: Build and push FuzzySearch Docker image
+      - name: Build and push FuzzySearch API Docker image
         uses: docker/build-push-action@v2
         with:
           context: .
           push: true
-          tags: ${{ steps.meta-fuzzysearch.outputs.tags }}
-          labels: ${{ steps.meta-fuzzysearch.outputs.labels }}
-          file: fuzzysearch/Dockerfile
+          tags: ${{ steps.meta-fuzzysearch-api.outputs.tags }}
+          labels: ${{ steps.meta-fuzzysearch-api.outputs.labels }}
+          file: fuzzysearch-api/Dockerfile
 
       - name: Build and push FuzzySearch Webhook Docker image
         uses: docker/build-push-action@v2

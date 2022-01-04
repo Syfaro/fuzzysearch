@@ -2,7 +2,7 @@
 members = [
     "fuzzysearch-common",
 
-    "fuzzysearch",
+    "fuzzysearch-api",
     "fuzzysearch-hash-input",
     "fuzzysearch-refresh",
     "fuzzysearch-webhook",
