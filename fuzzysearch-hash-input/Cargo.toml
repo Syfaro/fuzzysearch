@@ -14,10 +14,10 @@ tokio-stream = "0.1"
 tempfile = "3"
 image = "0.23"
 
-actix-web = "4.0.0-beta.18"
-actix-http = "3.0.0-beta.17"
-actix-multipart = "0.4.0-beta.11"
-tracing-actix-web = { version = "0.5.0-beta.8", features = ["opentelemetry_0_16"] }
+actix-web = "=4.0.0-beta.18"
+actix-http = "=3.0.0-beta.17"
+actix-multipart = "=0.4.0-beta.11"
+tracing-actix-web = { version = "=0.5.0-beta.8", features = ["opentelemetry_0_16"] }
 
 lazy_static = "1"
 prometheus = { version = "0.13", features = ["process"] }

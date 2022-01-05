@@ -188,6 +188,8 @@ pub(crate) async fn url(
 
     let distance = distance.unwrap_or(3);
 
+    let timer = crate::IMAGE_URL_DOWNLOAD_DURATION.start_timer();
+
     let content_length = resp
         .headers()
         .get("content-length")
@@ -217,6 +219,9 @@ pub(crate) async fn url(
 
         buf.put(chunk);
     }
+
+    let seconds = timer.stop_and_record();
+    tracing::info!("completed url download in {} seconds", seconds);
 
     let body = reqwest::Body::from(buf.to_vec());
     let hash = hash_input(client, &endpoints.hash_input, body).await?;

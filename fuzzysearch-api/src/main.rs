@@ -3,6 +3,7 @@ use std::{borrow::Cow, fmt::Display, str::FromStr};
 use api::ApiKeyAuthorization;
 use bkapi_client::BKApiClient;
 use hyper::StatusCode;
+use lazy_static::lazy_static;
 use poem::{error::ResponseError, listener::TcpListener, web::Data, EndpointExt, Route};
 use poem_openapi::{
     param::{Path, Query},
@@ -10,10 +11,35 @@ use poem_openapi::{
     types::multipart::Upload,
     Multipart, Object, OneOf, OpenApi, OpenApiService,
 };
+use prometheus::{register_histogram, register_int_counter_vec, Histogram, IntCounterVec};
 
 mod api;
 
 type Pool = sqlx::PgPool;
+
+lazy_static! {
+    static ref RATE_LIMIT_ATTEMPTS: IntCounterVec = register_int_counter_vec!(
+        "fuzzysearch_api_rate_limit_attempts_count",
+        "Number of attempts on each rate limit bucket",
+        &["bucket", "status"]
+    )
+    .unwrap();
+    static ref IMAGE_QUERY_DURATION: Histogram = register_histogram!(
+        "fuzzysearch_api_image_query_seconds",
+        "Duration to perform an image lookup query"
+    )
+    .unwrap();
+    static ref IMAGE_HASH_DURATION: Histogram = register_histogram!(
+        "fuzzysearch_api_image_hash_seconds",
+        "Duration to send image for hashing"
+    )
+    .unwrap();
+    static ref IMAGE_URL_DOWNLOAD_DURATION: Histogram = register_histogram!(
+        "fuzzysearch_api_image_url_download_seconds",
+        "Duration to download an image from a provided URL"
+    )
+    .unwrap();
+}
 
 #[derive(Clone)]
 pub struct Endpoints {
@@ -159,7 +185,7 @@ async fn update_rate_limit(
     pool: &Pool,
     key_id: i32,
     key_group_limit: i16,
-    group_name: &'static str,
+    bucket_name: &'static str,
     incr_by: i16,
 ) -> Result<RateLimit, sqlx::Error> {
     let now = chrono::Utc::now();
@@ -170,15 +196,23 @@ async fn update_rate_limit(
         "queries/update_rate_limit.sql",
         key_id,
         time_window,
-        group_name,
+        bucket_name,
         incr_by
     )
     .fetch_one(pool)
     .await?;
 
     if count > key_group_limit {
+        RATE_LIMIT_ATTEMPTS
+            .with_label_values(&[bucket_name, "limited"])
+            .inc();
+
         Ok(RateLimit::Limited)
     } else {
+        RATE_LIMIT_ATTEMPTS
+            .with_label_values(&[bucket_name, "available"])
+            .inc();
+
         Ok(RateLimit::Available((
             key_group_limit - count,
             key_group_limit,
@@ -246,6 +280,7 @@ async fn lookup_hashes(
 
     let data = serde_json::to_value(index_hashes)?;
 
+    let timer = IMAGE_QUERY_DURATION.start_timer();
     let results = sqlx::query_file!("queries/lookup_hashes.sql", data)
         .map(|row| {
             let site_extra_data = match row.site.as_deref() {
@@ -275,8 +310,13 @@ async fn lookup_hashes(
         })
         .fetch_all(pool)
         .await?;
+    let seconds = timer.stop_and_record();
 
-    tracing::info!("found {} matches from database", results.len());
+    tracing::info!(
+        "found {} matches from database in {} seconds",
+        results.len(),
+        seconds
+    );
     tracing::trace!("database matches: {:?}", results);
 
     Ok(results)
@@ -298,11 +338,15 @@ async fn hash_input(
 
     tracing::info!("sending image for hashing");
 
+    let timer = IMAGE_HASH_DURATION.start_timer();
     let resp = client
         .post(hash_input_endpoint)
         .multipart(form)
         .send()
         .await?;
+    let seconds = timer.stop_and_record();
+
+    tracing::info!("completed image hash in {} seconds", seconds);
 
     if resp.status() != StatusCode::OK {
         tracing::warn!("got wrong status code: {}", resp.status());
@@ -507,6 +551,7 @@ async fn main() {
         .nest("/", api_service)
         .nest("/docs", docs)
         .at("/openapi.json", api_spec_endpoint)
+        .at("/metrics", poem::endpoint::PrometheusExporter::new())
         .data(pool)
         .data(bkapi)
         .data(endpoints)

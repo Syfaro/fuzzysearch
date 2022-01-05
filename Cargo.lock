@@ -96,9 +96,9 @@ dependencies = [
 
 [[package]]
 name = "actix-router"
-version = "0.5.0-beta.3"
+version = "0.5.0-beta.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ddd9f117b910fbcce6e9f45092ffd4ff017785a346d09e2d4fd049f4e20384f4"
+checksum = "b53c1deabdbf3a8a8b9a949123edd3cafb873abd75da96b5933a8b590f9d6dc2"
 dependencies = [
  "bytestring",
  "firestorm",
@@ -199,9 +199,9 @@ dependencies = [
 
 [[package]]
 name = "actix-web-codegen"
-version = "0.5.0-beta.6"
+version = "0.5.0-rc.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "30a90b7f6c2fde9a1fe3df4da758c2c3c9d620dfa3eae4da0b6925dc0a13444a"
+checksum = "98a793e4a7bd059e06e1bc1bd9943b57a47f806de3599d2437441682292c333e"
 dependencies = [
  "actix-router",
  "proc-macro2",
@@ -894,9 +894,9 @@ checksum = "4443176a9f2c162692bd3d352d745ef9413eec5782a80d8fd6f8a1ac692a07f7"
 
 [[package]]
 name = "firestorm"
-version = "0.4.6"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "31586bda1b136406162e381a3185a506cdfc1631708dd40cba2f6628d8634499"
+checksum = "4d3d6188b8804df28032815ea256b6955c9625c24da7525f387a7af02fbb8f01"
 
 [[package]]
 name = "flate2"
@@ -1080,7 +1080,7 @@ dependencies = [
 
 [[package]]
 name = "fuzzysearch-api"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "bkapi-client",
  "bytes 1.1.0",
@@ -1268,9 +1268,9 @@ dependencies = [
 
 [[package]]
 name = "generic-array"
-version = "0.14.4"
+version = "0.14.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "501466ecc8a30d1d3b7fc9229b122b2ce8ed6e9d9223f1138d4babb253e51817"
+checksum = "fd48d33ec7f05fbfa152300fdad764757cbded343c1aa1cff2fbaf4134851803"
 dependencies = [
  "typenum",
  "version_check",
@@ -2306,9 +2306,9 @@ dependencies = [
 
 [[package]]
 name = "poem"
-version = "1.2.22"
+version = "1.2.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "729b68ea9a102b96d2d3a46954cd108bbe14e1d906b722822b0deff7d7617c3d"
+checksum = "e8f609173a5155e4dd994804848f55a3de894e7daecd562312e69151ec6c3556"
 dependencies = [
  "async-trait",
  "bytes 1.1.0",
@@ -2346,9 +2346,9 @@ dependencies = [
 
 [[package]]
 name = "poem-derive"
-version = "1.2.22"
+version = "1.2.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8c4648e2d2f0ef5a50119594205afdceb40ef1b6ec57bfa2f949df4aaa6f8bc7"
+checksum = "bb42548e64280207b0d28cb15ee93d4f22b4fd4f5aae857854f25ebf73cf8f3f"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -2358,9 +2358,9 @@ dependencies = [
 
 [[package]]
 name = "poem-openapi"
-version = "1.2.22"
+version = "1.2.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "964b896103226ad7cf87a82328e1b151c1a6319af59496a23f3ef28adcc8a0f5"
+checksum = "089c258deab06ca3e4f40afbc5abafcce11d9025c2baf7976ace3f3b59170de0"
 dependencies = [
  "base64 0.13.0",
  "bytes 1.1.0",
@@ -2382,9 +2382,9 @@ dependencies = [
 
 [[package]]
 name = "poem-openapi-derive"
-version = "1.2.22"
+version = "1.2.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "19aecdb1b13e895f34e28b078f4ef7605a7e1bae9403a5025688200ec7496f32"
+checksum = "6a6cb9b595ad55c370e919e655d7338a524edf678355f4784eb32a76a77ad3fc"
 dependencies = [
  "Inflector",
  "darling",
