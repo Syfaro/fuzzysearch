@@ -1,9 +1,6 @@
-pub fn configure_tracing(service_name: &'static str) {
-    use opentelemetry::KeyValue;
-    use tracing_subscriber::layer::SubscriberExt;
+use opentelemetry::KeyValue;
 
-    tracing_log::LogTracer::init().unwrap();
-
+pub fn get_tracer(service_name: &'static str) -> opentelemetry::sdk::trace::Tracer {
     let env = std::env::var("ENVIRONMENT");
     let env = if let Ok(env) = env.as_ref() {
         env.as_str()
@@ -13,9 +10,7 @@ pub fn configure_tracing(service_name: &'static str) {
         "release"
     };
 
-    opentelemetry::global::set_text_map_propagator(opentelemetry_jaeger::Propagator::new());
-
-    let tracer = opentelemetry_jaeger::new_pipeline()
+    opentelemetry_jaeger::new_pipeline()
         .with_agent_endpoint(std::env::var("JAEGER_COLLECTOR").expect("Missing JAEGER_COLLECTOR"))
         .with_service_name(service_name)
         .with_tags(vec![
@@ -23,7 +18,17 @@ pub fn configure_tracing(service_name: &'static str) {
             KeyValue::new("version", env!("CARGO_PKG_VERSION")),
         ])
         .install_batch(opentelemetry::runtime::Tokio)
-        .unwrap();
+        .unwrap()
+}
+
+pub fn configure_tracing(service_name: &'static str) {
+    use tracing_subscriber::layer::SubscriberExt;
+
+    tracing_log::LogTracer::init().unwrap();
+
+    opentelemetry::global::set_text_map_propagator(opentelemetry_jaeger::Propagator::new());
+
+    let tracer = get_tracer(service_name);
 
     let trace = tracing_opentelemetry::layer().with_tracer(tracer);
     let env_filter = tracing_subscriber::EnvFilter::from_default_env();

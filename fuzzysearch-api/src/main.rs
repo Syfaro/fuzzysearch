@@ -1,16 +1,17 @@
-use std::{borrow::Cow, str::FromStr};
+use std::{borrow::Cow, fmt::Display, str::FromStr};
 
+use api::ApiKeyAuthorization;
 use bkapi_client::BKApiClient;
-use bytes::BufMut;
 use hyper::StatusCode;
-use poem::{error::ResponseError, listener::TcpListener, web::Data, EndpointExt, Request, Route};
+use poem::{error::ResponseError, listener::TcpListener, web::Data, EndpointExt, Route};
 use poem_openapi::{
-    auth::ApiKey,
     param::{Path, Query},
     payload::{Json, Response},
     types::multipart::Upload,
-    Multipart, Object, OneOf, OpenApi, OpenApiService, SecurityScheme,
+    Multipart, Object, OneOf, OpenApi, OpenApiService,
 };
+
+mod api;
 
 type Pool = sqlx::PgPool;
 
@@ -22,39 +23,18 @@ pub struct Endpoints {
 
 struct Api;
 
-/// Simple authentication using a static API key. Must be manually requested.
-#[derive(SecurityScheme)]
-#[oai(
-    type = "api_key",
-    key_name = "X-Api-Key",
-    in = "header",
-    checker = "api_checker"
-)]
-struct ApiKeyAuthorization(UserApiKey);
-
-struct UserApiKey {
-    id: i32,
-    name: Option<String>,
-    owner_email: String,
-    name_limit: i16,
-    image_limit: i16,
-    hash_limit: i16,
-}
-
-async fn api_checker(req: &Request, api_key: ApiKey) -> Option<UserApiKey> {
-    let pool: &Pool = req.data().unwrap();
-
-    sqlx::query_file_as!(UserApiKey, "queries/lookup_api_key.sql", api_key.key)
-        .fetch_optional(pool)
-        .await
-        .ok()
-        .flatten()
-}
-
 #[derive(poem_openapi::Enum, Debug, PartialEq)]
 #[oai(rename_all = "snake_case")]
 enum KnownServiceName {
     Twitter,
+}
+
+impl Display for KnownServiceName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Twitter => write!(f, "Twitter"),
+        }
+    }
 }
 
 #[derive(poem_openapi::Enum, Debug)]
@@ -139,7 +119,10 @@ enum Error {
 
 impl ResponseError for Error {
     fn status(&self) -> hyper::StatusCode {
-        hyper::StatusCode::INTERNAL_SERVER_ERROR
+        match self {
+            Self::BadRequest(_) => hyper::StatusCode::BAD_REQUEST,
+            _ => hyper::StatusCode::INTERNAL_SERVER_ERROR,
+        }
     }
 }
 
@@ -160,18 +143,6 @@ impl BadRequest {
 impl ResponseError for BadRequest {
     fn status(&self) -> hyper::StatusCode {
         hyper::StatusCode::BAD_REQUEST
-    }
-}
-
-#[derive(Debug, thiserror::Error)]
-#[error("rate limited")]
-struct RateLimited {
-    bucket: String,
-}
-
-impl ResponseError for RateLimited {
-    fn status(&self) -> hyper::StatusCode {
-        hyper::StatusCode::TOO_MANY_REQUESTS
     }
 }
 
@@ -215,28 +186,28 @@ async fn update_rate_limit(
     }
 }
 
+#[macro_export]
 macro_rules! rate_limit {
     ($api_key:expr, $db:expr, $limit:tt, $group:expr) => {
         rate_limit!($api_key, $db, $limit, $group, 1)
     };
 
     ($api_key:expr, $db:expr, $limit:tt, $group:expr, $incr_by:expr) => {{
-        let rate_limit = update_rate_limit($db, $api_key.0.id, $api_key.0.$limit, $group, $incr_by)
-            .await
-            .map_err(Error::from)?;
+        let rate_limit =
+            crate::update_rate_limit($db, $api_key.0.id, $api_key.0.$limit, $group, $incr_by)
+                .await
+                .map_err(crate::Error::from)?;
 
         match rate_limit {
-            RateLimit::Limited => {
-                return Err(RateLimited {
-                    bucket: $group.to_string(),
-                }
-                .into())
+            crate::RateLimit::Limited => {
+                return Ok(crate::api::RateLimitedResponse::limited($group, 60))
             }
-            RateLimit::Available(count) => count,
+            crate::RateLimit::Available(count) => count,
         }
     }};
 }
 
+#[tracing::instrument(err, skip(pool, bkapi))]
 async fn lookup_hashes(
     pool: &Pool,
     bkapi: &BKApiClient,
@@ -246,6 +217,8 @@ async fn lookup_hashes(
     if distance > 10 {
         return Err(BadRequest::with_message(format!("distance too large: {}", distance)).into());
     }
+
+    tracing::info!("looking up {} hashes", hashes.len());
 
     let index_hashes: Vec<_> = bkapi
         .search_many(hashes, distance)
@@ -261,6 +234,15 @@ async fn lookup_hashes(
             })
         })
         .collect();
+
+    tracing::info!("found {} results in bkapi index", index_hashes.len());
+    tracing::trace!(
+        "bkapi matches: {:?}",
+        index_hashes
+            .iter()
+            .map(|hash| hash.found_hash)
+            .collect::<Vec<_>>()
+    );
 
     let data = serde_json::to_value(index_hashes)?;
 
@@ -294,6 +276,9 @@ async fn lookup_hashes(
         .fetch_all(pool)
         .await?;
 
+    tracing::info!("found {} matches from database", results.len());
+    tracing::trace!("database matches: {:?}", results);
+
     Ok(results)
 }
 
@@ -302,6 +287,7 @@ struct ImageSearchPayload {
     image: Upload,
 }
 
+#[tracing::instrument(skip(client, hash_input_endpoint, image))]
 async fn hash_input(
     client: &reqwest::Client,
     hash_input_endpoint: &str,
@@ -310,6 +296,8 @@ async fn hash_input(
     let part = reqwest::multipart::Part::stream(image);
     let form = reqwest::multipart::Form::new().part("image", part);
 
+    tracing::info!("sending image for hashing");
+
     let resp = client
         .post(hash_input_endpoint)
         .multipart(form)
@@ -317,12 +305,21 @@ async fn hash_input(
         .await?;
 
     if resp.status() != StatusCode::OK {
+        tracing::warn!("got wrong status code: {}", resp.status());
         return Err(BadRequest::with_message("invalid image").into());
     }
 
-    match resp.text().await?.parse() {
-        Ok(hash) => Ok(hash),
-        Err(_err) => Err(BadRequest::with_message("invalid image").into()),
+    let text = resp.text().await?;
+
+    match text.parse() {
+        Ok(hash) => {
+            tracing::debug!("image had hash {}", hash);
+            Ok(hash)
+        }
+        Err(_err) => {
+            tracing::warn!("got invalid data: {}", text);
+            Err(BadRequest::with_message("invalid image").into())
+        }
     }
 }
 
@@ -352,11 +349,38 @@ struct FurAffinityFile {
     hash: Option<i64>,
 }
 
+trait ResponseRateLimitHeaders
+where
+    Self: Sized,
+{
+    fn inject_rate_limit_headers(self, name: &'static str, remaining: (i16, i16)) -> Self;
+}
+
+impl<T> ResponseRateLimitHeaders for poem_openapi::payload::Response<T> {
+    fn inject_rate_limit_headers(self, name: &'static str, remaining: (i16, i16)) -> Self {
+        self.header(&format!("x-rate-limit-total-{}", name), remaining.1)
+            .header(&format!("x-rate-limit-remaining-{}", name), remaining.0)
+    }
+}
+
+/// LimitsResponse
+///
+/// The allowed number of requests per minute for an API key.
+#[derive(Object, Debug)]
+struct LimitsResponse {
+    /// The number of name lookups.
+    name: i16,
+    /// The number of hash lookups.
+    image: i16,
+    /// The number of image hashes.
+    hash: i16,
+}
+
 #[OpenApi]
 impl Api {
     /// Lookup images by hash
     ///
-    /// Perform a lookup for up to 10 given hashes.
+    /// Perform a lookup using up to 10 hashes.
     #[oai(path = "/hashes", method = "get")]
     async fn hashes(
         &self,
@@ -365,27 +389,8 @@ impl Api {
         auth: ApiKeyAuthorization,
         hashes: Query<String>,
         distance: Query<Option<u64>>,
-    ) -> poem::Result<Response<Json<Vec<HashLookupResult>>>> {
-        let hashes: Vec<i64> = hashes
-            .0
-            .split(',')
-            .take(10)
-            .filter_map(|hash| hash.parse().ok())
-            .collect();
-
-        let image_remaining = rate_limit!(auth, pool.0, image_limit, "image", hashes.len() as i16);
-
-        if hashes.is_empty() {
-            return Err(BadRequest::with_message("hashes must be provided").into());
-        }
-
-        let results = lookup_hashes(&pool, &bkapi, &hashes, distance.unwrap_or(3)).await?;
-
-        let resp = Response::new(Json(results))
-            .header("x-rate-limit-total-image", image_remaining.1)
-            .header("x-rate-limit-remaining-image", image_remaining.0);
-
-        Ok(resp)
+    ) -> poem::Result<Response<api::RateLimitedResponse<Vec<HashLookupResult>>>> {
+        api::hashes(pool.0, bkapi.0, auth, hashes, distance).await
     }
 
     /// Lookup images by image
@@ -401,45 +406,17 @@ impl Api {
         auth: ApiKeyAuthorization,
         search_type: Query<Option<ImageSearchType>>,
         payload: ImageSearchPayload,
-    ) -> poem::Result<Response<Json<ImageSearchResult>>> {
-        let image_remaining = rate_limit!(auth, pool.0, image_limit, "image");
-        let hash_remaining = rate_limit!(auth, pool.0, hash_limit, "hash");
-
-        let stream = tokio_util::io::ReaderStream::new(payload.image.into_async_read());
-        let body = reqwest::Body::wrap_stream(stream);
-
-        let hash = hash_input(&client, &endpoints.hash_input, body).await?;
-
-        let search_type = search_type.0.unwrap_or(ImageSearchType::Close);
-        let hashes = vec![hash];
-
-        let mut results = {
-            if search_type == ImageSearchType::Force {
-                lookup_hashes(pool.0, bkapi.0, &hashes, 10).await?
-            } else {
-                let results = lookup_hashes(pool.0, bkapi.0, &hashes, 0).await?;
-
-                if results.is_empty() && search_type != ImageSearchType::Exact {
-                    lookup_hashes(pool.0, bkapi.0, &hashes, 10).await?
-                } else {
-                    results
-                }
-            }
-        };
-
-        results.sort_by(|a, b| a.distance.partial_cmp(&b.distance).unwrap());
-
-        let resp = Response::new(Json(ImageSearchResult {
-            hash,
-            matches: results,
-        }))
-        .header("x-image-hash", hash)
-        .header("x-rate-limit-total-image", image_remaining.1)
-        .header("x-rate-limit-remaining-image", image_remaining.0)
-        .header("x-rate-limit-total-hash", hash_remaining.1)
-        .header("x-rate-limit-remaining-hash", hash_remaining.0);
-
-        Ok(resp)
+    ) -> poem::Result<Response<api::RateLimitedResponse<ImageSearchResult>>> {
+        api::image(
+            pool.0,
+            bkapi.0,
+            client.0,
+            endpoints.0,
+            auth,
+            search_type,
+            payload,
+        )
+        .await
     }
 
     /// Lookup images by image URL
@@ -455,62 +432,8 @@ impl Api {
         auth: ApiKeyAuthorization,
         url: Query<String>,
         distance: Query<Option<u64>>,
-    ) -> poem::Result<Response<Json<ImageSearchResult>>> {
-        let image_remaining = rate_limit!(auth, pool.0, image_limit, "image");
-        let hash_remaining = rate_limit!(auth, pool.0, hash_limit, "hash");
-
-        let mut resp = client.get(&url.0).send().await.map_err(Error::from)?;
-
-        let distance = distance.unwrap_or(3);
-
-        let content_length = resp
-            .headers()
-            .get("content-length")
-            .and_then(|len| {
-                String::from_utf8_lossy(len.as_bytes())
-                    .parse::<usize>()
-                    .ok()
-            })
-            .unwrap_or(0);
-
-        if content_length > 10_000_000 {
-            return Err(BadRequest::with_message(format!(
-                "image too large: {} bytes",
-                content_length
-            ))
-            .into());
-        }
-
-        let mut buf = bytes::BytesMut::with_capacity(content_length);
-
-        while let Some(chunk) = resp.chunk().await.map_err(Error::from)? {
-            if buf.len() + chunk.len() > 10_000_000 {
-                return Err(BadRequest::with_message(format!(
-                    "image too large: {} bytes",
-                    content_length
-                ))
-                .into());
-            }
-
-            buf.put(chunk);
-        }
-
-        let body = reqwest::Body::from(buf.to_vec());
-        let hash = hash_input(&client, &endpoints.hash_input, body).await?;
-
-        let results = lookup_hashes(pool.0, bkapi.0, &[hash], distance).await?;
-
-        let resp = Response::new(Json(ImageSearchResult {
-            hash,
-            matches: results,
-        }))
-        .header("x-image-hash", hash)
-        .header("x-rate-limit-total-image", image_remaining.1)
-        .header("x-rate-limit-remaining-image", image_remaining.0)
-        .header("x-rate-limit-total-hash", hash_remaining.1)
-        .header("x-rate-limit-remaining-hash", hash_remaining.0);
-
-        Ok(resp)
+    ) -> poem::Result<Response<api::RateLimitedResponse<ImageSearchResult>>> {
+        api::url(pool.0, bkapi.0, client.0, endpoints.0, auth, url, distance).await
     }
 
     /// Lookup FurAffinity submission by File ID
@@ -520,29 +443,21 @@ impl Api {
         pool: Data<&Pool>,
         auth: ApiKeyAuthorization,
         file_id: Query<i32>,
-    ) -> poem::Result<Response<Json<Vec<FurAffinityFile>>>> {
-        let file_remaining = rate_limit!(auth, pool.0, image_limit, "file");
+    ) -> poem::Result<Response<api::RateLimitedResponse<Vec<FurAffinityFile>>>> {
+        api::furaffinity_data(pool.0, auth, file_id).await
+    }
 
-        let matches = sqlx::query_file!("queries/lookup_furaffinity_file_id.sql", file_id.0)
-            .map(|row| FurAffinityFile {
-                id: row.id,
-                url: row.url,
-                filename: row.filename,
-                file_id: row.file_id,
-                rating: row.rating.and_then(|rating| rating.parse().ok()),
-                posted_at: row.posted_at,
-                artist: Some(row.artist),
-                hash: row.hash,
-            })
-            .fetch_all(pool.0)
-            .await
-            .map_err(Error::from)?;
-
-        let resp = Response::new(Json(matches))
-            .header("x-rate-limit-total-file", file_remaining.1)
-            .header("x-rate-limit-remaining-file", file_remaining.0);
-
-        Ok(resp)
+    /// Check API key limits
+    ///
+    /// Determine the number of allowed requests per minute for the current
+    /// API token.
+    #[oai(path = "/limits", method = "get")]
+    async fn limits(&self, auth: ApiKeyAuthorization) -> Json<LimitsResponse> {
+        Json(LimitsResponse {
+            name: auth.0.name_limit,
+            image: auth.0.image_limit,
+            hash: auth.0.hash_limit,
+        })
     }
 
     /// Check if a handle is known for a given service
@@ -556,16 +471,7 @@ impl Api {
         service: Path<KnownServiceName>,
         handle: Query<String>,
     ) -> poem::Result<Json<bool>> {
-        let handle_exists = match service.0 {
-            KnownServiceName::Twitter => {
-                sqlx::query_file_scalar!("queries/handle_twitter.sql", handle.0)
-                    .fetch_one(pool.0)
-                    .await
-                    .map_err(poem::error::InternalServerError)?
-            }
-        };
-
-        Ok(Json(handle_exists))
+        api::known_service(pool.0, service, handle).await
     }
 }
 
@@ -607,6 +513,9 @@ async fn main() {
         .data(reqwest::Client::new())
         .with(poem::middleware::Tracing)
         .with(poem::middleware::OpenTelemetryMetrics::new())
+        .with(poem::middleware::OpenTelemetryTracing::new(
+            fuzzysearch_common::trace::get_tracer("fuzzysearch-api"),
+        ))
         .with(cors);
 
     poem::Server::new(TcpListener::bind("0.0.0.0:8080"))
