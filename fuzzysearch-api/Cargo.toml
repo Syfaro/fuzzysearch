@@ -13,10 +13,10 @@ tracing-log = "0.1"
 prometheus = { version = "0.13", features = ["process"] }
 lazy_static = "1"
 
-opentelemetry = { version = "0.16", features = ["rt-tokio"] }
-opentelemetry-jaeger = { version = "0.15", features = ["tokio"] }
-tracing-opentelemetry = "0.16"
-opentelemetry-http = "0.5"
+opentelemetry = { version = "0.17", features = ["rt-tokio"] }
+opentelemetry-jaeger = { version = "0.16", features = ["tokio"] }
+tracing-opentelemetry = "0.17"
+opentelemetry-http = "0.6"
 
 tokio = { version = "1", features = ["full"] }
 tokio-stream = "0.1"
