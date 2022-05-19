@@ -113,8 +113,7 @@ fn main() {
                 .args()
                 .iter()
                 .next()
-                .map(|arg| arg.as_i64())
-                .flatten()
+                .and_then(|arg| arg.as_i64())
                 .unwrap_or(1_000);
 
             tracing::debug!(batch_size, "calculating missing submissions");

@@ -182,8 +182,7 @@ pub async fn image_query(
             hash: row.hash,
             distance: row
                 .distance
-                .map(|distance| u64::try_from(distance).ok())
-                .flatten(),
+                .and_then(|distance| u64::try_from(distance).ok()),
             artists: row.artists,
             filename: row.filename.unwrap_or_default(),
             searched_hash: row.searched_hash,
