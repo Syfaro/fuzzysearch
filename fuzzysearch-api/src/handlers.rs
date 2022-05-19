@@ -272,6 +272,7 @@ pub async fn search_file(
                     submission.rating,
                     submission.posted_at,
                     submission.hash_int,
+                    submission.file_sha256,
                     artist.name,
                     array(SELECT tag.name FROM tag_to_post JOIN tag ON tag_to_post.tag_id = tag.id WHERE tag_to_post.post_id = submission.id) tags
                 FROM
@@ -293,6 +294,7 @@ pub async fn search_file(
                     submission.rating,
                     submission.posted_at,
                     submission.hash_int,
+                    submission.file_sha256,
                     artist.name,
                     array(SELECT tag.name FROM tag_to_post JOIN tag ON tag_to_post.tag_id = tag.id WHERE tag_to_post.post_id = submission.id) tags
                 FROM
@@ -314,6 +316,7 @@ pub async fn search_file(
                     submission.rating,
                     submission.posted_at,
                     submission.hash_int,
+                    submission.file_sha256,
                     artist.name,
                     array(SELECT tag.name FROM tag_to_post JOIN tag ON tag_to_post.tag_id = tag.id WHERE tag_to_post.post_id = submission.id) tags
                 FROM
@@ -335,6 +338,7 @@ pub async fn search_file(
                     submission.rating,
                     submission.posted_at,
                     submission.hash_int,
+                    submission.file_sha256,
                     artist.name,
                     array(SELECT tag.name FROM tag_to_post JOIN tag ON tag_to_post.tag_id = tag.id WHERE tag_to_post.post_id = submission.id) tags
                 FROM
@@ -361,6 +365,9 @@ pub async fn search_file(
                 .get::<Option<String>, _>("name")
                 .map(|artist| vec![artist]),
             tags: row.get("tags"),
+            sha256: row
+                .get::<Option<Vec<u8>>, _>("file_sha256")
+                .map(hex::encode),
             distance: None,
             hash: row.get::<Option<i64>, _>("hash_int"),
             searched_hash: None,

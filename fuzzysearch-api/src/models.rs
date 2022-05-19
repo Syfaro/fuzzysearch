@@ -89,7 +89,8 @@ pub async fn image_query(
             submission.rating,
             submission.posted_at,
             hashes.searched_hash,
-            hashes.distance
+            hashes.distance,
+            submission.file_sha256 sha256
         FROM hashes
         JOIN submission ON hashes.found_hash = submission.hash_int
         JOIN artist ON submission.artist_id = artist.id
@@ -107,7 +108,8 @@ pub async fn image_query(
             e621.data->>'rating' rating,
             to_timestamp(data->>'created_at', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') posted_at,
             hashes.searched_hash,
-            hashes.distance
+            hashes.distance,
+            e621.sha256
         FROM hashes
         JOIN e621 ON hashes.found_hash = e621.hash
         WHERE e621.hash IN (SELECT hashes.found_hash)
@@ -124,7 +126,8 @@ pub async fn image_query(
             weasyl.data->>'rating' rating,
             to_timestamp(data->>'posted_at', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') posted_at,
             hashes.searched_hash,
-            hashes.distance
+            hashes.distance,
+            weasyl.sha256
         FROM hashes
         JOIN weasyl ON hashes.found_hash = weasyl.hash
         WHERE weasyl.hash IN (SELECT hashes.found_hash)
@@ -144,7 +147,8 @@ pub async fn image_query(
             END rating,
             to_timestamp(tweet.data->>'created_at', 'DY Mon DD HH24:MI:SS +0000 YYYY') posted_at,
             hashes.searched_hash,
-            hashes.distance
+            hashes.distance,
+            null sha256
         FROM hashes
         JOIN tweet_media ON hashes.found_hash = tweet_media.hash
         JOIN tweet ON tweet_media.tweet_id = tweet.id
@@ -174,6 +178,7 @@ pub async fn image_query(
             url: row.url.unwrap_or_default(),
             posted_at: row.posted_at,
             tags: None,
+            sha256: row.sha256.map(hex::encode),
             hash: row.hash,
             distance: row
                 .distance

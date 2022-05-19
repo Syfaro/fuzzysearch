@@ -36,6 +36,8 @@ pub struct SearchResult {
     pub rating: Option<Rating>,
     pub posted_at: Option<chrono::DateTime<chrono::Utc>>,
 
+    pub sha256: Option<String>,
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tags: Option<Vec<String>>,
 

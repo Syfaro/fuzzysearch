@@ -993,6 +993,7 @@ dependencies = [
  "futures",
  "fuzzysearch-common",
  "hamming",
+ "hex",
  "hyper",
  "image",
  "img_hash",
