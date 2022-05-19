@@ -271,14 +271,13 @@ pub async fn search_file(
                     submission.file_id,
                     submission.rating,
                     submission.posted_at,
+                    submission.hash_int,
                     artist.name,
-                    hashes.id hash_id
+                    array(SELECT tag.name FROM tag_to_post JOIN tag ON tag_to_post.tag_id = tag.id WHERE tag_to_post.post_id = submission.id) tags
                 FROM
                     submission
                 JOIN artist
                     ON artist.id = submission.artist_id
-                JOIN hashes
-                    ON hashes.furaffinity_id = submission.id
                 WHERE
                     file_id = $1
                 LIMIT 10",
@@ -293,14 +292,13 @@ pub async fn search_file(
                     submission.file_id,
                     submission.rating,
                     submission.posted_at,
+                    submission.hash_int,
                     artist.name,
-                    hashes.id hash_id
+                    array(SELECT tag.name FROM tag_to_post JOIN tag ON tag_to_post.tag_id = tag.id WHERE tag_to_post.post_id = submission.id) tags
                 FROM
                     submission
                 JOIN artist
                     ON artist.id = submission.artist_id
-                JOIN hashes
-                    ON hashes.furaffinity_id = submission.id
                 WHERE
                     lower(filename) = lower($1)
                 LIMIT 10",
@@ -315,14 +313,13 @@ pub async fn search_file(
                     submission.file_id,
                     submission.rating,
                     submission.posted_at,
+                    submission.hash_int,
                     artist.name,
-                    hashes.id hash_id
+                    array(SELECT tag.name FROM tag_to_post JOIN tag ON tag_to_post.tag_id = tag.id WHERE tag_to_post.post_id = submission.id) tags
                 FROM
                     submission
                 JOIN artist
                     ON artist.id = submission.artist_id
-                JOIN hashes
-                    ON hashes.furaffinity_id = submission.id
                 WHERE
                     lower(url) = lower($1)
                 LIMIT 10",
@@ -337,14 +334,13 @@ pub async fn search_file(
                     submission.file_id,
                     submission.rating,
                     submission.posted_at,
+                    submission.hash_int,
                     artist.name,
-                    hashes.id hash_id
+                    array(SELECT tag.name FROM tag_to_post JOIN tag ON tag_to_post.tag_id = tag.id WHERE tag_to_post.post_id = submission.id) tags
                 FROM
                     submission
                 JOIN artist
                     ON artist.id = submission.artist_id
-                JOIN hashes
-                    ON hashes.furaffinity_id = submission.id
                 WHERE
                     submission.id = $1
                 LIMIT 10",
@@ -364,8 +360,9 @@ pub async fn search_file(
             artists: row
                 .get::<Option<String>, _>("name")
                 .map(|artist| vec![artist]),
+            tags: row.get("tags"),
             distance: None,
-            hash: None,
+            hash: row.get::<Option<i64>, _>("hash_int"),
             searched_hash: None,
             site_info: Some(SiteInfo::FurAffinity {
                 file_id: row.get("file_id"),

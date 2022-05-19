@@ -173,6 +173,7 @@ pub async fn image_query(
             site_id_str: row.id.unwrap_or_default().to_string(),
             url: row.url.unwrap_or_default(),
             posted_at: row.posted_at,
+            tags: None,
             hash: row.hash,
             distance: row
                 .distance
