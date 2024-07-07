@@ -91,6 +91,7 @@ pub async fn image_query(
             hashes.searched_hash,
             hashes.distance,
             submission.file_sha256 sha256
+            null flags
         FROM hashes
         JOIN submission ON hashes.found_hash = submission.hash_int
         JOIN artist ON submission.artist_id = artist.id
@@ -109,7 +110,8 @@ pub async fn image_query(
             to_timestamp(data->>'created_at', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') posted_at,
             hashes.searched_hash,
             hashes.distance,
-            e621.sha256
+            e621.sha256,
+            e621.data->>'flags' flags
         FROM hashes
         JOIN e621 ON hashes.found_hash = e621.hash
         WHERE e621.hash IN (SELECT hashes.found_hash)
@@ -128,6 +130,7 @@ pub async fn image_query(
             hashes.searched_hash,
             hashes.distance,
             weasyl.sha256
+            null flags
         FROM hashes
         JOIN weasyl ON hashes.found_hash = weasyl.hash
         WHERE weasyl.hash IN (SELECT hashes.found_hash)
@@ -149,6 +152,7 @@ pub async fn image_query(
             hashes.searched_hash,
             hashes.distance,
             null sha256
+            null flags
         FROM hashes
         JOIN tweet_media ON hashes.found_hash = tweet_media.hash
         JOIN tweet ON tweet_media.tweet_id = tweet.id
@@ -164,6 +168,7 @@ pub async fn image_query(
             },
             Some("e621") => SiteInfo::E621 {
                 sources: row.sources,
+                flags: row.flags,
             },
             Some("Twitter") => SiteInfo::Twitter,
             Some("Weasyl") => SiteInfo::Weasyl,
