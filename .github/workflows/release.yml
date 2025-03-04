@@ -19,7 +19,7 @@ jobs:
       - uses: actions/checkout@v2
 
       - name: Cache target
-        uses: actions/cache@v2
+        uses: actions/cache@v4
         with:
           path: |
             target/
@@ -52,7 +52,7 @@ jobs:
           mv target/release/fuzzysearch-ingest-weasyl fuzzysearch-ingest-weasyl/fuzzysearch-ingest-weasyl
 
       - name: Upload binaries
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: binaries
           path: |
