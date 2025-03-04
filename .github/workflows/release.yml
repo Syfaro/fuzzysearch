@@ -10,7 +10,7 @@ env:
 
 jobs:
   release:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       packages: write
@@ -175,15 +175,3 @@ jobs:
           tags: ${{ steps.meta-fuzzysearch-ingest-weasyl.outputs.tags }}
           labels: ${{ steps.meta-fuzzysearch-ingest-weasyl.outputs.labels }}
           file: fuzzysearch-ingest-weasyl/Dockerfile
-
-  sourcegraph:
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v2
-      - name: Generate LSIF data
-        uses: sourcegraph/lsif-rust-action@main
-      - name: Upload LSIF data
-        uses: sourcegraph/lsif-upload-action@master
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
