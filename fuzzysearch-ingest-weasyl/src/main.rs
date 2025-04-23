@@ -80,6 +80,7 @@ async fn load_frontpage(client: &reqwest::Client, api_key: &str) -> anyhow::Resu
         .header("X-Weasyl-API-Key", api_key)
         .send()
         .await?
+        .error_for_status()?
         .json()
         .await?;
 
@@ -157,6 +158,7 @@ async fn process_submission(
         .get(&sub.media.submission.first().unwrap_or_log().url)
         .send()
         .await?
+        .error_for_status()?
         .bytes()
         .await?
         .to_vec();
@@ -232,6 +234,8 @@ async fn main() {
     fuzzysearch_common::trace::serve_metrics().await;
 
     let api_key = std::env::var("WEASYL_APIKEY").unwrap_or_log();
+    let user_agent = std::env::var("USER_AGENT").unwrap_or_log();
+
     let download_folder = std::env::var("DOWNLOAD_FOLDER").ok();
 
     let pool = sqlx::postgres::PgPoolOptions::new()
@@ -240,7 +244,10 @@ async fn main() {
         .await
         .unwrap_or_log();
 
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .user_agent(user_agent)
+        .build()
+        .unwrap_or_log();
 
     let faktory_dsn = std::env::var("FAKTORY_URL").expect_or_log("Missing FAKTORY_URL");
     let faktory = FaktoryClient::connect(faktory_dsn)
