@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use prometheus::{register_counter, register_histogram, Counter, Histogram, HistogramOpts, Opts};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -268,6 +270,8 @@ async fn main() {
 
         tracing::info!(min, max, "Calculated range of submissions to check");
 
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
         for id in (min + 1)..=max {
             let row: Option<_> = sqlx::query!("SELECT id FROM weasyl WHERE id = $1", id)
                 .fetch_optional(&pool)
@@ -294,6 +298,8 @@ async fn main() {
                     duration.stop_and_discard();
                 }
             }
+
+            tokio::time::sleep(Duration::from_secs(1)).await;
         }
 
         tokio::time::sleep(std::time::Duration::from_secs(60 * 5)).await;
