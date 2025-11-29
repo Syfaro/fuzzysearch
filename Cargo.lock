@@ -849,7 +849,7 @@ dependencies = [
 [[package]]
 name = "furaffinity-rs"
 version = "0.1.0"
-source = "git+https://github.com/Syfaro/furaffinity-rs#ba71e900b0db9d15b3f08fa4e0cb347ee4f316f8"
+source = "git+https://github.com/Syfaro/furaffinity-rs#3795efceb8ec7de9e879c50064e6d16f0dba8aea"
 dependencies = [
  "chrono",
  "image",
