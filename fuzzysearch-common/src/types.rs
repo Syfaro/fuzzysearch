@@ -55,6 +55,16 @@ pub struct SearchResult {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct E621Flags {
+    pending: bool,
+    flagged: bool,
+    note_locked: bool,
+    status_locked: bool,
+    rating_locked: bool,
+    deleted: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "site", content = "site_info")]
 pub enum SiteInfo {
     FurAffinity {
@@ -63,6 +73,7 @@ pub enum SiteInfo {
     #[serde(rename = "e621")]
     E621 {
         sources: Option<Vec<String>>,
+        flags: Option<E621Flags>,
     },
     Twitter,
     Weasyl,
