@@ -18,7 +18,7 @@ faktory = "0.11"
 sqlx = { version = "0.5", features = ["runtime-tokio-native-tls", "postgres", "macros", "json", "offline", "chrono"] }
 
 chrono = "0.4"
-reqwest = "0.11"
+reqwest = "0.12"
 
 furaffinity-rs = { git = "https://github.com/Syfaro/furaffinity-rs" }
 

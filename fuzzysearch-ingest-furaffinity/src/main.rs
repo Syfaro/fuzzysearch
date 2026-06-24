@@ -1,3 +1,6 @@
+use std::cell::Cell;
+use std::time::{Duration, Instant};
+
 use lazy_static::lazy_static;
 use prometheus::{
     register_counter, register_histogram, register_int_gauge_vec, Counter, Histogram,
@@ -7,6 +10,10 @@ use tokio_postgres::Client;
 use tracing_unwrap::{OptionExt, ResultExt};
 
 use fuzzysearch_common::faktory::FaktoryClient;
+
+const NORMAL_INTERVAL_MS: u64 = 1_000;
+const BUSY_INTERVAL_MS: u64 = 60_000;
+const BUSY_REGISTERED_THRESHOLD: usize = 15_000;
 
 lazy_static! {
     static ref INDEX_DURATION: Histogram = register_histogram!(HistogramOpts::new(
@@ -36,6 +43,42 @@ lazy_static! {
         &["group"]
     )
     .unwrap_or_log();
+}
+
+struct RateLimiter {
+    interval: Cell<Duration>,
+    last_request: Cell<Option<Instant>>,
+}
+
+impl RateLimiter {
+    fn new() -> Self {
+        Self {
+            interval: Cell::new(Duration::from_millis(NORMAL_INTERVAL_MS)),
+            last_request: Cell::new(None),
+        }
+    }
+
+    fn observe_online(&self, registered: usize) {
+        let interval = if registered > BUSY_REGISTERED_THRESHOLD {
+            BUSY_INTERVAL_MS
+        } else {
+            NORMAL_INTERVAL_MS
+        };
+
+        self.interval.set(Duration::from_millis(interval));
+    }
+
+    async fn wait(&self) {
+        if let Some(prev) = self.last_request.get() {
+            let interval = self.interval.get();
+            let elapsed = prev.elapsed();
+            if elapsed < interval {
+                tokio::time::sleep(interval - elapsed).await;
+            }
+        }
+
+        self.last_request.set(Some(Instant::now()));
+    }
 }
 
 async fn lookup_tag(client: &Client, tag: &str) -> i32 {
@@ -170,11 +213,12 @@ impl futures_retry::ErrorHandler<furaffinity_rs::Error> for RetryHandler {
     }
 }
 
-#[tracing::instrument(skip(client, fa, faktory, download_folder))]
+#[tracing::instrument(skip(client, fa, faktory, limiter, download_folder))]
 async fn process_submission(
     client: &Client,
     fa: &furaffinity_rs::FurAffinity,
     faktory: &FaktoryClient,
+    limiter: &RateLimiter,
     id: i32,
     download_folder: &Option<String>,
 ) {
@@ -186,13 +230,19 @@ async fn process_submission(
 
     let _timer = SUBMISSION_DURATION.start_timer();
 
-    let sub = futures_retry::FutureRetry::new(|| fa.get_submission(id), RetryHandler::new(3))
-        .await
-        .map(|(sub, _attempts)| sub)
-        .map_err(|(err, _attempts)| err);
+    let result = futures_retry::FutureRetry::new(
+        || async {
+            limiter.wait().await;
+            fa.get_submission(id).await
+        },
+        RetryHandler::new(3),
+    )
+    .await
+    .map(|(result, _attempts)| result)
+    .map_err(|(err, _attempts)| err);
 
-    let sub = match sub {
-        Ok(sub) => sub,
+    let (sub, online) = match result {
+        Ok(result) => result,
         Err(err) => {
             tracing::error!("Failed to load submission: {:?}", err);
             _timer.stop_and_discard();
@@ -201,6 +251,8 @@ async fn process_submission(
             return;
         }
     };
+
+    limiter.observe_online(online.registered);
 
     let sub = match sub {
         Some(sub) => sub,
@@ -291,11 +343,14 @@ async fn main() {
         .await
         .expect_or_log("Unable to connect to Faktory");
 
+    let limiter = RateLimiter::new();
+
     tracing::info!("Started");
 
     loop {
         tracing::debug!("Fetching latest ID... ");
         let duration = INDEX_DURATION.start_timer();
+        limiter.wait().await;
         let (latest_id, online) = fa
             .latest_id()
             .await
@@ -304,6 +359,7 @@ async fn main() {
         tracing::info!(latest_id = latest_id, "Got latest ID");
 
         tracing::debug!(?online, "Got updated users online");
+        limiter.observe_online(online.registered);
         USERS_ONLINE
             .with_label_values(&["guest"])
             .set(online.guests as i64);
@@ -315,7 +371,7 @@ async fn main() {
             .set(online.other as i64);
 
         for id in ids_to_check(&client, latest_id).await {
-            process_submission(&client, &fa, &faktory, id, &download_folder).await;
+            process_submission(&client, &fa, &faktory, &limiter, id, &download_folder).await;
         }
 
         tracing::info!("Completed fetch, waiting a minute before loading more");

@@ -90,7 +90,8 @@ fn main() {
 
         let sub = rt_clone
             .block_on(fa.get_submission(id))
-            .map_err(Error::FurAffinity)?;
+            .map_err(Error::FurAffinity)?
+            .0;
 
         tracing::debug!("loaded furaffinity submission");
 
