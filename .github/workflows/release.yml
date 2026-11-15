@@ -25,10 +25,10 @@ jobs:
             target/
           key: ${{ runner.os }}-release-${{ hashFiles('Cargo.lock') }}
 
-      - name: Get stable toolchain
+      - name: Get Rust toolchain
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: stable
+          toolchain: 1.99.1
 
       - name: Install dependencies
         run: |
